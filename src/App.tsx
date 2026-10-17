@@ -1,131 +1,33 @@
-import React, { useState } from 'react';
-import { Filter } from 'lucide-react';
-import { AppProvider } from './context/AppContext';
-import Header from './components/Header';
-import ProductGrid from './components/ProductGrid';
-import Filters from './components/Filters';
-import Cart from './components/Cart';
-import AuthModal from './components/AuthModal';
-import Newsletter from './components/Newsletter';
-import Footer from './components/Footer';
-import { useProducts } from './hooks/useProducts';
-import { useApp } from './context/AppContext';
+import AccountGroups, { loadGroups } from './AccountGroups';
+import TradingPanel from './TradingPanel';
+import { useState } from 'react';
+import { LayoutDashboard, Copy, SlidersHorizontal, ArrowUpRight, ArrowDownRight, Plus, X, ChevronDown, Activity, Check, Pause, Play, Wallet, Settings2, ShieldCheck, Menu, Users } from 'lucide-react';
 
-function MainContent() {
-  const { products, featuredProducts, loading } = useProducts();
-  const { dispatch } = useApp();
-  const [showFilters, setShowFilters] = useState(false);
-  const [showCart, setShowCart] = useState(false);
-  const [showAuth, setShowAuth] = useState(false);
-
-  const handleSearchChange = (query: string) => {
-    dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
-  };
-
-  const handleCheckout = () => {
-    // In a real app, this would integrate with Stripe
-    setShowCart(false);
-    alert('Para implementar los pagos con Stripe, necesitas configurar tu clave secreta. Una vez configurada, podremos procesar pagos de forma segura.');
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Header
-        onSearchChange={handleSearchChange}
-        onShowCart={() => setShowCart(true)}
-        onShowAuth={() => setShowAuth(true)}
-      />
-
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            Piezas Premium para tu TMAX
-          </h1>
-          <p className="text-xl md:text-2xl mb-8">
-            Encuentra todo lo que necesitas para potenciar tu Yamaha TMAX
-          </p>
-          <div className="flex justify-center space-x-4">
-            <div className="bg-white/10 rounded-lg p-4">
-              <div className="text-2xl font-bold">500+</div>
-              <div className="text-sm">Productos</div>
-            </div>
-            <div className="bg-white/10 rounded-lg p-4">
-              <div className="text-2xl font-bold">24h</div>
-              <div className="text-sm">Envío Express</div>
-            </div>
-            <div className="bg-white/10 rounded-lg p-4">
-              <div className="text-2xl font-bold">2 años</div>
-              <div className="text-sm">Garantía</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Featured Products */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-          Productos Destacados
-        </h2>
-        <ProductGrid products={featuredProducts} />
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Todos los Productos ({products.length})
-          </h2>
-          <button
-            onClick={() => setShowFilters(true)}
-            className="lg:hidden flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Filter className="h-5 w-5" />
-            <span>Filtros</span>
-          </button>
-        </div>
-
-        <div className="lg:grid lg:grid-cols-4 lg:gap-8">
-          {/* Filters Sidebar */}
-          <div className="lg:col-span-1">
-            <Filters isOpen={showFilters} onClose={() => setShowFilters(false)} />
-          </div>
-
-          {/* Products Grid */}
-          <div className="lg:col-span-3">
-            <ProductGrid products={products} loading={loading} />
-          </div>
-        </div>
-      </div>
-
-      {/* Newsletter */}
-      <Newsletter />
-
-      {/* Footer */}
-      <Footer />
-
-      {/* Cart Sidebar */}
-      <Cart 
-        isOpen={showCart} 
-        onClose={() => setShowCart(false)}
-        onCheckout={handleCheckout}
-      />
-
-      {/* Auth Modal */}
-      <AuthModal 
-        isOpen={showAuth} 
-        onClose={() => setShowAuth(false)} 
-      />
-    </div>
-  );
+type Account = { id: string; name: string; size: number; balance: number; phase: string; role: string; enabled: boolean; mode: string; quantity: number; loss: number; stops: boolean; pending: boolean };
+const initial: Account[] = [
+ {id:'LUCID-4821',name:'Cuenta principal',size:50000,balance:51240,phase:'Fondeada',role:'Maestra',enabled:true,mode:'Igual a la maestra',quantity:1,loss:1000,stops:true,pending:true},
+ {id:'LUCID-4822',name:'Lucid · Evaluación',size:50000,balance:49320,phase:'Examen',role:'Seguidora',enabled:true,mode:'Multiplicador',quantity:1,loss:1000,stops:true,pending:true},
+ {id:'LUCID-4823',name:'Lucid · Growth',size:100000,balance:100680,phase:'Examen',role:'Seguidora',enabled:true,mode:'Multiplicador',quantity:2,loss:2000,stops:true,pending:true},
+ {id:'LUCID-4824',name:'Lucid · Reserva',size:25000,balance:24750,phase:'Fondeada',role:'Seguidora',enabled:false,mode:'Cantidad fija',quantity:1,loss:500,stops:true,pending:false},
+];
+const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n);
+function load():Account[]{try {const value=JSON.parse(localStorage.getItem('lucid-accounts-v1')||'null');return Array.isArray(value)&&value.length&&value.every(a=>typeof a.id==='string'&&Number.isFinite(a.balance)&&Number.isFinite(a.size))?value:initial;}catch{return initial;}}
+export default function App(){
+ const [groups,setGroups]=useState(loadGroups); const [activeGroup,setActiveGroup]=useState(''); const [selectedAccounts,setSelectedAccounts]=useState<string[]>([]);
+ const [accounts,setAccounts]=useState<Account[]>(load); const [tab,setTab]=useState('Portfolio');const [period,setPeriod]=useState('1S');const [paused,setPaused]=useState(false);const [edit,setEdit]=useState<Account|null>(null);const [notice,setNotice]=useState('');const [menu,setMenu]=useState(false);const [hover,setHover]=useState<number|null>(null);
+ const total=accounts.reduce((s,a)=>s+a.balance,0),capital=accounts.reduce((s,a)=>s+a.size,0),pnl=total-capital;const positive=accounts.filter(a=>a.balance>=a.size).length;
+ const save=(next:Account[])=>{setAccounts(next);try{localStorage.setItem('lucid-accounts-v1',JSON.stringify(next));}catch{setNotice('Cambios aplicados. El navegador no permite guardarlos.');}};
+ const toggle=(a:Account)=>save(accounts.map(x=>x.id===a.id?{...x,enabled:!x.enabled}:x));
+ const points=period==='1D'?[0,100,75,210,160,240,190,pnl]:period==='1M'?[0,-800,300,600,-400,900,400,pnl]:[0,420,980,1200,700,320,600,pnl];const low=Math.min(...points)-450,high=Math.max(...points)+450;const coords=points.map((v,i)=>`${56+i*97},${195-(v-low)/(high-low)*160}`);const path='M'+coords.join(' L');
+ return <div className="app"><aside className={menu?'sidebar open':'sidebar'}><a className="brand" href="#" onClick={()=>setTab('Portfolio')}><span className="brand-mark">∥</span> tandem<span className="brand-dot">.</span></a><div className="workspace"><span className="workspace-icon">G</span><div>Mi workspace<small>Plan personal</small></div><ChevronDown size={14}/></div><div className="nav-label">WORKSPACE</div><nav>{[{name:'Portfolio',icon:LayoutDashboard},{name:'Copiador',icon:Copy},{name:'Grupos',icon:Users},{name:'Configuración',icon:SlidersHorizontal}].map(({name,icon:Icon})=><button key={name} className={tab===name?'nav-item active':'nav-item'} onClick={()=>{setTab(name);setMenu(false);}}><Icon size={18}/>{name}{name==='Copiador'&&<span className="nav-count">{accounts.filter(a=>a.role==='Seguidora').length}</span>}</button>)}</nav><div className="side-bottom"><div className="connection"><span className="status-dot amber"/> Entorno de demostración<small>NinjaTrader no conectado</small></div><div className="user"><span className="avatar">G</span><div>Mi espacio de trading<small>Lucid Trading</small></div><Settings2 size={16}/></div></div></aside>
+ <div className="main-shell"><header className="topbar"><button className="mobile-menu icon-button" onClick={()=>setMenu(!menu)} aria-label="Abrir menú"><Menu size={20}/></button><div className="breadcrumb">Workspace <span>/</span> <strong>{tab}</strong></div><div className="top-right"><span className="demo-tag"><span className="status-dot amber"/> Modo demo</span><span className="top-divider"/><span className="avatar small">G</span></div></header>
+ <main><div className="page-heading"><div><div className="eyebrow">TU TRADING, EN PERSPECTIVA</div><h1>{tab}</h1><p>{tab==='Portfolio'?'Todas tus cuentas. Una sola visión.':tab==='Copiador'?'Una cuenta lidera. Las demás te siguen.':tab==='Grupos'?'Organiza tus cuentas. Opera con tus grupos.':'Tu operativa, a tu medida.'}</p></div><button className="primary" onClick={()=>setEdit({id:'DEMO-'+Date.now(),name:'Nueva cuenta',size:50000,balance:50000,phase:'Examen',role:'Seguidora',enabled:false,mode:'Igual a la maestra',quantity:1,loss:1000,stops:true,pending:true})}><Plus size={16}/> Añadir cuenta</button></div>
+ <div className="demo-banner"><ShieldCheck size={16}/><span>Estás explorando un prototipo. Los balances y la copia son simulados.</span><span className="banner-end">SIN OPERACIONES REALES</span></div>
+ {tab==='Portfolio'&&<><section><div className="section-heading"><span className="section-number">01</span><div><h2>Tu capital</h2><p>Cuánto tienes entre todas tus cuentas y cómo has llegado hasta aquí.</p></div><div className="periods">{['1D','1S','1M'].map(p=><button key={p} className={period===p?'selected':''} onClick={()=>{setPeriod(p);setHover(null);}}>{p}</button>)}</div></div><div className="capital-card"><div className="capital-summary"><div className="label">BALANCE TOTAL <Wallet size={14}/></div><div className="balance">{money(total)}</div><div className="balance-meta"><span className={pnl>=0?'pill positive':'pill negative'}>{pnl>=0?<ArrowUpRight size={13}/>:<ArrowDownRight size={13}/>} {pnl>=0?'+':''}{money(pnl)} ({(pnl/capital*100).toFixed(2)}%)</span><span>Inicial: {money(capital)}</span></div><div className="mini-stats"><div><span>HOY</span><strong className="green">+$320.00</strong></div><div><span>ESTA SEMANA</span><strong className="green">+$860.00</strong></div><div><span>ACUMULADO</span><strong className={pnl>=0?'green':'red'}>{pnl>=0?'+':''}{money(pnl)}</strong></div></div></div><div className="chart"><div className="chart-heading"><span className="label">CURVA DE CAPITAL</span><span><i/> Capital inicial</span></div><svg viewBox="0 0 780 230" role="img" aria-label={`Curva de capital de demostración, período ${period}`} onMouseLeave={()=>setHover(null)}><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#64d6ae" stopOpacity=".2"/><stop offset="100%" stopColor="#64d6ae" stopOpacity="0"/></linearGradient></defs>{[0,1,2,3].map(i=><g key={i}><text x="0" y={37+i*52} className="axis">${((capital+high-(high-low)*i/3)/1000).toFixed(1)}k</text><line x1="56" y1={33+i*52} x2="745" y2={33+i*52} className="gridline"/></g>)}<line x1="56" x2="745" y1={195-(0-low)/(high-low)*160} y2={195-(0-low)/(high-low)*160} className="baseline"/><path d={`${path} L735,205 L56,205 Z`} fill="url(#area)"/><path d={path} fill="none" stroke="#67d6ad" strokeWidth="2.5" strokeLinejoin="round"/>{coords.map((c,i)=><g key={i} onMouseEnter={()=>setHover(i)}><circle cx={c.split(',')[0]} cy={c.split(',')[1]} r="16" fill="transparent"/>{hover===i&&<><circle cx={c.split(',')[0]} cy={c.split(',')[1]} r="4" fill="#a5f3cf"/><rect x={Math.min(610,Math.max(56,56+i*97-58))} y="0" width="130" height="25" rx="5" fill="#283831"/><text x={Math.min(675,Math.max(121,56+i*97+7))} y="17" textAnchor="middle" fill="#dff9ee" fontSize="12">{money(capital+points[i])}</text></>}</g>)}{['Inicio','', '', '', '', '', '', 'Ahora'].map((t,i)=><text key={i} x={56+i*97} y="227" className="axis" textAnchor="middle">{t}</text>)}</svg><div className="chart-foot">Serie ilustrativa · {period==='1D'?'Últimas 24 horas':period==='1S'?'Últimos 7 días':'Últimos 30 días'}</div></div></div></section>
+ <div className="insight-grid"><div className="insight"><span className="insight-icon"><Wallet size={17}/></span><div><span>Cuentas en portfolio</span><strong>{accounts.length}<small> cuentas Lucid</small></strong></div></div><div className="insight"><span className="insight-icon"><Activity size={17}/></span><div><span>Cuentas en positivo</span><strong>{positive}<small> de {accounts.length} cuentas</small></strong></div><span className="tiny-badge">{Math.round(positive/accounts.length*100)}%</span></div><div className="insight"><span className="insight-icon"><Copy size={17}/></span><div><span>Copiador de cuentas</span><strong className="status-text"><span className={'status-dot '+(paused?'amber':'')}/>{paused?'Pausado':'Demo activa'}</strong></div><button className="text-link" onClick={()=>setTab('Copiador')}>Gestionar <ArrowUpRight size={14}/></button></div></div></>}
+ {tab!=='Grupos'&&<section><div className="section-heading"><span className="section-number">{tab==='Portfolio'?'02':'01'}</span><div><h2>{tab==='Copiador'?'Centro de copia':tab==='Configuración'?'Perfiles de cuenta':'Tus cuentas'}</h2><p>{tab==='Portfolio'?`${positive} de ${accounts.length} en positivo. Dónde está tu dinero y qué aporta cada cuenta.`:'Configura cada cuenta de forma independiente, según su tamaño y su fase.'}</p></div>{tab==='Copiador'&&<button className="secondary" onClick={()=>setPaused(!paused)}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?'Reanudar demo':'Pausar demo'}</button>}</div>
+ <div className="accounts-card">{tab==='Portfolio'&&<div className="allocation"><div className="allocation-title"><span className="label">REPARTO DEL CAPITAL</span><span>{accounts.length} cuentas</span></div><div className="allocation-bar">{accounts.map((a,i)=><div key={a.id} style={{width:`${a.balance/total*100}%`,background:['#7ca7fa','#ac99e8','#63cbb1','#deb97c'][i%4]}} title={`${a.name}: ${(a.balance/total*100).toFixed(1)}%`}/>)}</div></div>}<div className="table-scroll"><table><thead><tr><th>CUENTA</th><th>TIPO / CAPITAL</th><th>BALANCE</th><th>{tab==='Portfolio'?'P&L TOTAL':'TAMAÑO DE COPIA'}</th><th>ESTADO</th><th/></tr></thead><tbody>{accounts.map((a,i)=><tr key={a.id}><td><div className="account-name"><span className="account-icon" style={{color:['#7ca7fa','#ac99e8','#63cbb1','#deb97c'][i%4]}}>L<span>↗</span></span><div><strong>{a.name}</strong><small>{a.id} <span className={a.role==='Maestra'?'role master':'role'}>{a.role}</span></small></div></div></td><td><span className={a.phase==='Fondeada'?'phase funded':'phase'}>{a.phase}</span><small className="cell-sub">${(a.size/1000).toLocaleString()}k</small></td><td className="numeric">{money(a.balance)}<small className="cell-sub">{(a.balance/total*100).toFixed(1)}% del portfolio</small></td><td>{tab==='Portfolio'?<><span className={a.balance>=a.size?'green':'red'}>{a.balance>=a.size?'+':''}{money(a.balance-a.size)}</span><small className="cell-sub">{((a.balance-a.size)/a.size*100).toFixed(2)}%</small></>:<><span>{a.role==='Maestra'?'Origen':a.mode==='Multiplicador'?`${a.quantity}× contratos`:a.mode==='Cantidad fija'?`${a.quantity} contratos`:'1:1 · Maestra'}</span><small className="cell-sub">{a.stops?'Stop y objetivo activos':'Sin copia de protección'}</small></>}</td><td><button className="account-status" disabled={a.role==='Maestra'} onClick={()=>toggle(a)} aria-label={`${a.enabled?'Pausar':'Activar'} ${a.name}`}><span className={'status-dot '+(!a.enabled||paused?'muted':'')}/>{a.role==='Maestra'?'Maestra':!a.enabled||paused?'Pausada':'Copiando · demo'}</button></td><td><button className="icon-button edit-account" aria-label={`Configurar ${a.name}`} onClick={()=>setEdit({...a})}><Settings2 size={17}/></button></td></tr>)}</tbody></table></div><div className="table-footer"><span><ShieldCheck size={13}/> Configuración guardada en este navegador</span><button className="text-link" onClick={()=>setTab(tab==='Portfolio'?'Copiador':'Portfolio')}>{tab==='Portfolio'?'Ver copiador':'Volver al portfolio'} <ArrowUpRight size={14}/></button></div></div></section>}{tab==='Grupos'&&<AccountGroups accounts={accounts} groups={groups} onGroupsChange={next=>{setGroups(next);setActiveGroup('');}} activeGroup={activeGroup} onSelect={id=>{setActiveGroup(id);setSelectedAccounts([]);setTab('Copiador');}}/>}<div hidden={tab!=='Copiador'}><TradingPanel accounts={accounts} groups={groups} activeGroup={activeGroup} onSelectGroup={id=>{setActiveGroup(id);setSelectedAccounts([]);}} selected={activeGroup?(groups.find(g=>g.id===activeGroup)?.members||[]).filter(id=>accounts.some(a=>a.id===id)):selectedAccounts} setSelected={ids=>{setActiveGroup('');setSelectedAccounts(ids);}} onManageGroups={()=>setTab('Grupos')}/></div><footer className="footer"><span><span className="status-dot amber"/> Datos de demostración · Sin conexión a NinjaTrader</span><span>Hecho para operar con claridad.</span></footer></main></div>
+ {notice&&<div className="toast" role="status"><Check size={16}/>{notice}<button className="icon-button" aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={14}/></button></div>}
+ {edit&&<div className="modal-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setEdit(null);}}><form className="modal" onSubmit={e=>{e.preventDefault();if(edit.role==='Maestra'&&accounts.some(a=>a.id!==edit.id&&a.role==='Maestra')){setNotice('Cambia primero la cuenta maestra actual a seguidora.');return;}const exists=accounts.some(a=>a.id===edit.id);save(exists?accounts.map(a=>a.id===edit.id?edit:a):[...accounts,edit]);setEdit(null);setNotice('Perfil guardado · Solo configuración de demostración');}}><div className="modal-heading"><div><span className="eyebrow">PERFIL INDEPENDIENTE</span><h2>Configurar cuenta</h2></div><button type="button" className="icon-button" onClick={()=>setEdit(null)} aria-label="Cerrar configuración"><X size={20}/></button></div><p className="modal-info">Estos ajustes solo afectan al prototipo. No se enviarán órdenes.</p><label>Nombre de la cuenta<input required maxLength={50} value={edit.name} onChange={e=>setEdit({...edit,name:e.target.value})}/></label><div className="form-grid"><label>Capital nominal ($)<input required type="number" min="1" step="1" max="10000000" value={edit.size} onChange={e=>setEdit({...edit,size:Number(e.target.value)})}/></label><label>Balance demo ($)<input required type="number" min="0" step="0.01" max="10000000" value={edit.balance} onChange={e=>setEdit({...edit,balance:Number(e.target.value)})}/></label><label>Fase<select value={edit.phase} onChange={e=>setEdit({...edit,phase:e.target.value})}><option>Examen</option><option>Fondeada</option><option>Personalizada</option></select></label><label>Rol<select value={edit.role} onChange={e=>setEdit({...edit,role:e.target.value})}><option>Seguidora</option><option>Maestra</option></select></label><label>Modo de contratos<select value={edit.mode} onChange={e=>setEdit({...edit,mode:e.target.value})}><option>Igual a la maestra</option><option>Multiplicador</option><option>Cantidad fija</option></select></label><label>{edit.mode==='Multiplicador'?'Multiplicador':'Contratos'}<input required type="number" min={edit.mode==='Multiplicador'?0.1:1} step={edit.mode==='Multiplicador'?0.1:1} max="100" disabled={edit.mode==='Igual a la maestra'} value={edit.quantity} onChange={e=>setEdit({...edit,quantity:Number(e.target.value)})}/></label></div><label>Límite de pérdida diaria ($)<input required type="number" min="1" max="1000000" value={edit.loss} onChange={e=>setEdit({...edit,loss:Number(e.target.value)})}/></label><div className="toggle-option"><div><strong>Copiar stops y objetivos</strong><small>Replicar los ajustes de protección de la maestra</small></div><input aria-label="Copiar stops y objetivos" type="checkbox" checked={edit.stops} onChange={e=>setEdit({...edit,stops:e.target.checked})}/></div><div className="toggle-option"><div><strong>Copiar órdenes pendientes</strong><small>Incluir órdenes limitadas y stop de entrada</small></div><input aria-label="Copiar órdenes pendientes" type="checkbox" checked={edit.pending} onChange={e=>setEdit({...edit,pending:e.target.checked})}/></div><div className="modal-actions"><button type="button" className="secondary" onClick={()=>setEdit(null)}>Cancelar</button><button className="primary" type="submit"><Check size={16}/> Guardar perfil</button></div></form></div>}
+ </div>;
 }
-
-function App() {
-  return (
-    <AppProvider>
-      <MainContent />
-    </AppProvider>
-  );
-}
-
-export default App;
