@@ -455,7 +455,15 @@ export class Engine {
     if (a.position) this.checkLiquidation(a, b);
   }
 
+  private blockedLogged = false;
+
   private openGroup(g: Group, side: 1 | -1, price: number, t: number, day: string) {
+    // Protección: con precios no fiables de NinjaTrader (Simulated Data Feed, sin conexión o lejos del real) no se entra.
+    if (this.state.source === 'nt' && !this.market.trusted) {
+      if (!this.blockedLogged) { this.log(`${g.name}: señal IGNORADA, el precio de NinjaTrader no es fiable (${this.market.status.warning || this.market.status.message})`, t); this.blockedLogged = true; }
+      return;
+    }
+    this.blockedLogged = false;
     if (g.direction === 'largos' && side < 0) return;
     if (g.direction === 'cortos' && side > 0) return;
     let opened = 0;

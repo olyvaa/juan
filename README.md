@@ -76,7 +76,9 @@ Sección del panel que funciona **sin NinjaTrader**:
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
 - **Mercado:** widget oficial de TradingView con `CME_MINI:MNQ1!`, solo para ver el precio (el bot no puede leerlo; en TradingView gratuito
   va con unos 10 min de retraso), y la fuente de precio del bot. Hay cuatro fuentes:
-  *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`);
+  *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`).
+  **Protección:** si NinjaTrader está en Simulated Data Feed/Playback, no tiene conexión de datos o su precio se aleja más
+  de un 2 % del MNQ real (referencia de Yahoo cada minuto), el bot no abre operaciones y lo avisa en Grupos y Mercado;
   *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite;
   *Simulado*, y *Simulado rápido* (60×).
 

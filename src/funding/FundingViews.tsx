@@ -521,8 +521,14 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
 export function Grupos({ ask, notify }: Props) {
   const e = useEngine();
   const [creating, setCreating] = useState(e.state.groups.length === 0);
+  const untrusted = e.state.source === 'nt' && !e.market.trusted;
   return (
     <>
+      {untrusted && (
+        <div className="callout"><AlertTriangle size={18} /><div>
+          <b>El bot no está abriendo operaciones: el precio de NinjaTrader no es fiable.</b> {e.market.status.warning || e.market.status.message} Míralo en <b>Mercado</b>.
+        </div></div>
+      )}
       <div className="groups-intro">
         <button type="button" className="btn primary" onClick={() => setCreating(!creating)}><Plus size={16} /> Nuevo grupo</button>
         <p className="muted">
@@ -603,7 +609,7 @@ export function Mercado() {
       </div>
 
       {e.state.source === 'nt' && m.status.warning && (
-        <div className="callout"><AlertTriangle size={18} /><div><b>Precio no fiable.</b> {m.status.warning}</div></div>
+        <div className="callout"><AlertTriangle size={18} /><div><b>Precio no fiable: el bot no abre operaciones.</b> {m.status.warning}</div></div>
       )}
       {e.state.source === 'nt' && m.ntConnections.length > 0 && (
         <p className="muted conn-line">

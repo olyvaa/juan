@@ -68,6 +68,11 @@ class SimGenerator {
 export class Market {
   bars: Bar[] = [];          // velas de 1 min CERRADAS
   ntConnections: NtConnection[] = [];
+  /** Precio de referencia del MNQ real (Yahoo, con retraso) para comprobar que NinjaTrader no da precios inventados. */
+  reference: { price: number; at: number } | null = null;
+  /** false = el precio de NinjaTrader no es fiable: el bot no abre operaciones. */
+  trusted = true;
+  private refAsked = 0;
   last = 0;                  // último precio (incluye la vela en formación)
   status: MarketStatus;
   private listeners = new Set<Listener>();
@@ -142,18 +147,39 @@ export class Market {
         : simulated.length === live.length
           ? `NinjaTrader está conectado a "${simulated.map(c => c.name).join(', ')}": esos precios son INVENTADOS por NinjaTrader, no el MNQ real. Conecta tu cuenta del bróker (Lucid / Rithmic / Tradovate…).`
           : undefined;
-      if (d.error) { this.setStatus(false, d.error); return; }
+      if (d.error) { this.trusted = false; this.setStatus(false, d.error); return; }
       if (!d.loaded) { this.setStatus(false, 'Cargando datos de NinjaTrader…'); return; }
       const lastT = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
       for (const [t, o, h, l, c] of d.bars) if (t > lastT) this.bars.push({ t, o, h, l, c });
       if (this.bars.length > 8000) this.bars.splice(0, this.bars.length - 8000);
       if (d.last) this.last = d.last;
-      this.setStatus(true, `${NT_INSTRUMENT} en tiempo real · NinjaTrader`, warning);
+      void this.checkReference(gen);
+      let w = warning;
+      const ref = this.reference;
+      if (!w && ref && this.last > 0 && Math.abs(this.last / ref.price - 1) > 0.02) {
+        w = `El precio de NinjaTrader (${this.last.toFixed(2)}) no se parece al del MNQ real (~${ref.price.toFixed(2)} según Yahoo). NinjaTrader no está recibiendo datos reales.`;
+      }
+      this.trusted = !w;
+      this.setStatus(true, `${NT_INSTRUMENT} en tiempo real · NinjaTrader`, w);
     } catch {
-      if (gen === this.generation) this.setStatus(false, 'NinjaTrader no está abierto o no tiene el AddOn (localhost:8793)');
+      if (gen === this.generation) { this.trusted = false; this.setStatus(false, 'NinjaTrader no está abierto o no tiene el AddOn (localhost:8793)'); }
     } finally {
       this.ntBusy = false;
     }
+  }
+
+  /** Cada minuto: último precio del MNQ en Yahoo como referencia (si el proxy /yahoo funciona). */
+  private async checkReference(gen: number) {
+    if (Date.now() - this.refAsked < 60000) return;
+    this.refAsked = Date.now();
+    try {
+      const res = await fetch('/yahoo/v8/finance/chart/MNQ=F?interval=1m&range=1d', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const closes: (number | null)[] = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+      const last = [...closes].reverse().find((v): v is number => typeof v === 'number');
+      if (gen === this.generation && last) this.reference = { price: last, at: Date.now() };
+    } catch { /* sin referencia: se usa solo la comprobación de conexiones */ }
   }
 
   private async pollYahoo(gen: number, range: string) {
