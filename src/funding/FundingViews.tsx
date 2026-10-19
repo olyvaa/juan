@@ -285,7 +285,10 @@ const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'ambas', label: 'Ambas' }, { id: 'largos', label: 'Solo largos' }, { id: 'cortos', label: 'Solo cortos' },
 ];
 
-type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number };
+type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number; tf: number };
+
+const TIMEFRAMES = [1, 3, 5, 15];
+const tfOf = (v: FormValues) => (v.strategy === 'jetf1' ? 1 : v.tf);
 
 const BATCHES: { v: number; label: string }[] = [
   { v: 0, label: 'Todas a la vez' }, { v: 1, label: 'Una a una' }, { v: 2, label: '2 a la vez' }, { v: 3, label: '3 a la vez' },
@@ -303,10 +306,10 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
     if (!v.name.trim()) { notify('Ponle un nombre al grupo', true); return; }
     if (v.accountIds.length === 0) { notify('Elige al menos una cuenta', true); return; }
     if (editing) {
-      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch });
+      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch, tf: tfOf(v) });
       notify(`Grupo "${v.name.trim()}" actualizado`);
     } else {
-      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch });
+      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch, tf: tfOf(v) });
       notify(`Grupo "${v.name.trim()}" creado. Ajusta cada cuenta en la tabla y pulsa Activar.`);
     }
     onDone();
@@ -319,7 +322,7 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
           <input className="input" value={v.name} placeholder="Ej. Evaluaciones 50K" onChange={ev => set({ name: ev.target.value })} />
         </label>
         <label className="field"><span>Estrategia</span>
-          <select className="select" value={v.strategy} onChange={ev => set({ strategy: ev.target.value as StrategyKey })}>
+          <select className="select" value={v.strategy} onChange={ev => set({ strategy: ev.target.value as StrategyKey, tf: ev.target.value === 'jetf1' ? 1 : (v.tf === 1 && v.strategy === 'jetf1' ? 5 : v.tf) })}>
             {(Object.keys(STRATEGY_INFO) as StrategyKey[]).map(k => <option key={k} value={k}>{STRATEGY_INFO[k].name}</option>)}
           </select>
         </label>
@@ -330,6 +333,14 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
         </label>
       </div>
       <p className="muted field-note">{STRATEGY_INFO[v.strategy].note}</p>
+      {v.strategy !== 'jetf1' && (
+        <div className="field"><span>Vela</span>
+          <div className="segmented" role="radiogroup" aria-label="Vela" style={{ maxWidth: 320 }}>
+            {TIMEFRAMES.map(tf => <button key={tf} type="button" role="radio" aria-checked={v.tf === tf} className={v.tf === tf ? 'on' : ''} onClick={() => set({ tf })}>{tf} min</button>)}
+          </div>
+          {v.strategy === 'goatpro' && v.tf !== 5 && <span className="muted">GoatPro se probó con velas de 5 minutos; con otra vela cambian sus resultados.</span>}
+        </div>
+      )}
       <div className="field"><span>Cómo operan las cuentas</span>
         <div className="segmented wide" role="radiogroup" aria-label="Cómo operan las cuentas">
           {BATCHES.map(b => <button key={b.v} type="button" role="radio" aria-checked={v.batch === b.v} className={v.batch === b.v ? 'on' : ''} onClick={() => set({ batch: b.v })}>{b.label}</button>)}
@@ -422,7 +433,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
         </div>
         <div className="monitor-meta">
           {g.running ? <StatusPill kind="good">ACTIVO</StatusPill> : <StatusPill kind="neutral">INACTIVO</StatusPill>}
-          <span>{info.name} · MNQ · M{info.tf}</span>
+          <span>{info.name} · MNQ · M{g.tf}</span>
           <span>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
           <span>{batchLabel(g.batch)}</span>
           <span>{g.accountIds.length} ctas</span>
@@ -444,7 +455,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
 
       {editing && !g.running && (
         <GroupForm e={e} editing={g} notify={notify} onDone={() => setEditing(false)}
-          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch }} />
+          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch, tf: g.tf }} />
       )}
 
       {open && (
@@ -523,7 +534,7 @@ export function Grupos({ ask, notify }: Props) {
       {creating && (
         <Section title="Nuevo grupo">
           <GroupForm e={e} notify={notify} onDone={() => setCreating(false)}
-            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0 }} />
+            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0, tf: 5 }} />
         </Section>
       )}
       {e.state.groups.map(g => <GroupMonitor key={g.id} g={g} e={e} ask={ask} notify={notify} />)}

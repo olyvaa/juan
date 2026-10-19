@@ -7,10 +7,10 @@ import { MNQ, hm, ny } from './plans';
 export type StrategyKey = 'goatpro' | 'gyr' | 'rangopenny' | 'jetf1';
 
 export const STRATEGY_INFO: Record<StrategyKey, { name: string; tf: 1 | 5; note: string }> = {
-  goatpro: { name: 'GoatPro', tf: 5, note: 'Retroceso a la EMA 95 en tendencia (M5) · validada' },
-  gyr: { name: 'GYR', tf: 5, note: 'Color de la vela cerrada (M5) · validada' },
-  rangopenny: { name: 'RangOpenNY', tf: 5, note: 'Ruptura de la caja 09:00–09:30 NY (M5) · validada' },
-  jetf1: { name: 'JetF1', tf: 1, note: 'Stop arriba/abajo a las 09:29:58 NY (M1) · validada' },
+  goatpro: { name: 'GoatPro', tf: 5, note: 'Retroceso a la EMA 95 en tendencia · validada' },
+  gyr: { name: 'GYR', tf: 5, note: 'Color de la vela cerrada · validada' },
+  rangopenny: { name: 'RangOpenNY', tf: 5, note: 'Ruptura de la caja 09:00–09:30 NY · validada' },
+  jetf1: { name: 'JetF1', tf: 1, note: 'Stop arriba/abajo a las 09:29:58 NY (siempre velas de 1 min) · validada' },
 };
 
 export function ema(values: number[], period: number): number[] {
@@ -23,13 +23,13 @@ export function ema(values: number[], period: number): number[] {
 const T = MNQ.tick;
 
 /** GoatPro sobre la última vela de 5 min (bars5 ya cerradas). */
-export function goatProSignal(bars5: Bar[]): 1 | -1 | 0 {
+export function goatProSignal(bars5: Bar[], tf = 5): 1 | -1 | 0 {
   if (bars5.length < 200) return 0;
   const closes = bars5.map(b => b.c);
   const f = ema(closes, 20), m = ema(closes, 95), s = ema(closes, 200);
   const i = bars5.length - 1, b = bars5[i];
   // Sesión 18:00 → 16:00 NY (sobre la hora de cierre de la vela)
-  const closeMin = ny(b.t + 300).minutes;
+  const closeMin = ny(b.t + tf * 60).minutes;
   if (closeMin > hm('16:00') && closeMin < hm('18:00')) return 0;
   const body = Math.abs(b.c - b.o);
   if (body < 1 * T) return 0;
@@ -49,14 +49,16 @@ export function gyrSignal(b: Bar): 1 | -1 | 0 {
 }
 
 /** RangOpenNY: caja 09:00–09:30 NY y ruptura con cierre ±10 ticks entre 09:30 y 10:00. */
-export function rangOpenSignal(bars5: Bar[]): 1 | -1 | 0 {
+export function rangOpenSignal(bars5: Bar[], tf = 5): 1 | -1 | 0 {
   const b = bars5[bars5.length - 1];
   if (!b) return 0;
   const p = ny(b.t);
-  const closeMin = p.minutes + 5;
+  const closeMin = p.minutes + tf;
   if (closeMin <= hm('09:30') || closeMin > hm('10:00')) return 0;
-  const box = bars5.filter(x => { const q = ny(x.t); return q.date === p.date && q.minutes >= hm('09:00') && q.minutes + 5 <= hm('09:30'); });
-  if (box.length < 4 || box.length > 8) return 0;
+  const box = bars5.filter(x => { const q = ny(x.t); return q.date === p.date && q.minutes >= hm('09:00') && q.minutes + tf <= hm('09:30'); });
+  // Velas en la caja: entre 2/3 de las esperadas y las esperadas + 2 (con M5: 4–8, como en NinjaTrader)
+  const expected = 30 / tf;
+  if (box.length < Math.ceil(expected * 2 / 3) || box.length > expected + 2) return 0;
   // Solape medio de cuerpos entre velas consecutivas >= 40 %
   let sum = 0;
   for (let i = 1; i < box.length; i++) {

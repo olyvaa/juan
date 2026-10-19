@@ -41,6 +41,7 @@ export type Group = {
   id: string; name: string; strategy: StrategyKey; accountIds: string[];
   qty: number; tpUsd: number; slUsd: number; direction: Direction;   // valores por defecto para cuentas nuevas
   members: Record<string, Member>;
+  tf: number;         // minutos por vela de la estrategia (JetF1 siempre 1)
   batch: number;      // 0 = todas las cuentas a la vez; N = solo N a la vez (en orden): cuando una supera o se quema, entra la siguiente
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
@@ -74,6 +75,7 @@ function loadState(): State {
       for (const g of s.groups) {
         g.members = g.members || {};
         g.batch = g.batch || 0;
+        g.tf = g.tf || (g.strategy === 'jetf1' ? 1 : 5);
         for (const id of g.accountIds) g.members[id] = g.members[id] || newMember(g.qty, g.tpUsd, g.slUsd);
       }
       return s;
@@ -154,7 +156,7 @@ export class Engine {
   }
 
   /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */
-  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number }) {
+  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number; tf: number }) {
     const g = this.group(id);
     if (!g || g.running) return;
     const members: Record<string, Member> = {};
@@ -399,19 +401,25 @@ export class Engine {
 
     for (const g of running.filter(x => x.strategy === 'jetf1')) this.jetF1(g, b, day);
 
-    if ((b.t + 60) % 300 !== 0) return;          // ¿se acaba de cerrar una vela de 5 min?
-    const fiveMin = running.filter(x => x.strategy !== 'jetf1');
-    if (fiveMin.length === 0) return;
-    const bars5 = aggregate(bars.slice(Math.max(0, i - 1400), i + 1), 5);
-    const b5 = bars5[bars5.length - 1];
-    for (const g of fiveMin) {
-      if (b5.t <= g.startedAt) continue;
-      if (g.lastExitT && b5.t < g.lastExitT) continue;       // 1 vela de espera tras cerrar
+    // Estrategias de vela: cada grupo con su temporalidad (1, 3, 5 o 15 min)
+    const byTf = new Map<number, Bar[]>();
+    for (const g of running) {
+      if (g.strategy === 'jetf1') continue;
+      const tf = g.tf || 5;
+      if ((b.t + 60) % (tf * 60) !== 0) continue;           // ¿se acaba de cerrar una vela de este grupo?
+      let barsTf = byTf.get(tf);
+      if (!barsTf) {
+        barsTf = aggregate(bars.slice(Math.max(0, i - (tf * 210 + 60)), i + 1), tf);   // 200+ velas para la EMA 200
+        byTf.set(tf, barsTf);
+      }
+      const bt = barsTf[barsTf.length - 1];
+      if (bt.t <= g.startedAt) continue;
+      if (g.lastExitT && bt.t < g.lastExitT) continue;       // 1 vela de espera tras cerrar
       let sig: 1 | -1 | 0 = 0;
-      if (g.strategy === 'goatpro') sig = goatProSignal(bars5);
-      else if (g.strategy === 'gyr') sig = gyrSignal(b5);
+      if (g.strategy === 'goatpro') sig = goatProSignal(barsTf, tf);
+      else if (g.strategy === 'gyr') sig = gyrSignal(bt);
       else if (g.strategy === 'rangopenny' && g.lastNyorDay !== day) {
-        sig = rangOpenSignal(bars5);
+        sig = rangOpenSignal(barsTf, tf);
         if (sig) g.lastNyorDay = day;
       }
       if (sig) this.openGroup(g, sig, b.c, b.t + 60, day);
