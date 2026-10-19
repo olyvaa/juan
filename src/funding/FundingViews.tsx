@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
 import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
-import { SOURCES } from './market';
+import { SOURCES, connectionMatches } from './market';
 import type { AccountInfo } from '../panel/api';
 import { PLANS, RULES, fmtNy, planById, tradingDay, type Plan } from './plans';
 import { STRATEGY_INFO, type StrategyKey } from './strategies';
@@ -583,8 +583,10 @@ function TradingViewQuote({ symbol }: { symbol: string }) {
 
 function NtConnectionSetting({ e }: { e: Engine }) {
   const [name, setName] = useState(e.state.ntConnection);
-  const live = e.market.ntConnections.filter(c => c.price === 'Connected').map(c => c.name);
-  const ok = !!e.state.ntConnection && live.some(n => n.toLowerCase() === e.state.ntConnection.toLowerCase());
+  const conns = e.market.ntConnections;
+  const live = conns.filter(c => c.price === 'Connected');
+  const ok = !!e.state.ntConnection && live.some(c => connectionMatches(c.name, e.state.ntConnection));
+  const use = (n: string) => { setName(n); e.setNtConnection(n); };
   return (
     <Section
       title="Conexión de datos de NinjaTrader"
@@ -597,6 +599,23 @@ function NtConnectionSetting({ e }: { e: Engine }) {
         <button type="button" className="btn primary" disabled={name.trim() === e.state.ntConnection} onClick={() => e.setNtConnection(name)}>Guardar</button>
         {ok ? <StatusPill kind="good">Conectada</StatusPill> : <StatusPill kind="bad">No conectada</StatusPill>}
       </div>
+      {conns.length === 0
+        ? <div className="empty">NinjaTrader no informa de sus conexiones. Instala el último <b>CCMarketFeed.cs</b>, pulsa F5 y reinicia NinjaTrader.</div>
+        : conns.map(c => {
+          const chosen = connectionMatches(c.name, e.state.ntConnection);
+          return (
+            <div className="row" key={c.name}>
+              <div className="row-main">
+                <span className="row-title">{c.name || '(sin nombre)'} {chosen && <span className="chip real">Elegida</span>}</span>
+                <span className="row-sub">Conexión: {c.status || '—'} · Datos de precio: {c.price || '—'}</span>
+              </div>
+              {c.price === 'Connected'
+                ? <StatusPill kind={/simulat|playback|replay/i.test(c.name) ? 'bad' : 'good'}>{/simulat|playback|replay/i.test(c.name) ? 'Precios simulados' : 'Datos conectados'}</StatusPill>
+                : <StatusPill kind="neutral">Sin datos</StatusPill>}
+              {!chosen && c.name && <button type="button" className="btn small" onClick={() => use(c.name)}>Usar esta</button>}
+            </div>
+          );
+        })}
     </Section>
   );
 }

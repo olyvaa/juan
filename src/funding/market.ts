@@ -21,6 +21,12 @@ export const SOURCES: { id: SourceId; label: string; note: string }[] = [
 export type MarketStatus = { source: SourceId; ok: boolean; message: string; updated: number; warning?: string };
 export type NtConnection = { name: string; status: string; price: string };
 
+/** ¿La conexión de NinjaTrader es la elegida? Sin distinguir mayúsculas; vale si un nombre contiene al otro. */
+export function connectionMatches(name: string, wanted: string) {
+  const a = name.trim().toLowerCase(), b = wanted.trim().toLowerCase();
+  return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+}
+
 type Listener = () => void;
 
 const round = (p: number) => Math.round(p / MNQ.tick) * MNQ.tick;
@@ -152,8 +158,8 @@ export class Market {
       const live = this.ntConnections.filter(c => c.price === 'Connected');
       const simulated = live.filter(c => /simulat|playback|replay/i.test(c.name));
       const req = this.requiredConnection.trim();
-      const reqLive = !req || live.some(c => c.name.toLowerCase() === req.toLowerCase());
-      const others = live.filter(c => c.name.toLowerCase() !== req.toLowerCase());
+      const reqLive = !req || live.some(c => connectionMatches(c.name, req));
+      const others = live.filter(c => !connectionMatches(c.name, req));
       const warning = live.length === 0
         ? 'NinjaTrader no tiene ninguna conexión de datos activa: el precio puede estar parado o ser antiguo.'
         : !reqLive
