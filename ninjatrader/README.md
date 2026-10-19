@@ -19,11 +19,12 @@ que sigue siendo una demo sin conexión.
 | `AddOns/CCHub.cs` | Registro compartido entre las estrategias y el panel |
 | `AddOns/CCCommandCenter.cs` | Ventana **Command Pro Clone**: pestañas *Estrategias* y *Copiador* |
 | `AddOns/CCBridge.cs` | Puente local `http://localhost:8793` para el panel web (`npm run panel`) |
+| `AddOns/CCMarketFeed.cs` | Velas de 1 min en tiempo real de `MNQ 12-26` (horario ETH) para Juanitos Funding. Solo lectura |
 
 ## Instalación
 
 1. Copia **`Strategies/*.cs`** en `Documents\NinjaTrader 8\bin\Custom\Strategies\`.
-2. Copia **`AddOns/*.cs`** en `Documents\NinjaTrader 8\bin\Custom\AddOns\`.
+2. Copia **`AddOns/*.cs`** (4 archivos) en `Documents\NinjaTrader 8\bin\Custom\AddOns\`.
 3. Abre el NinjaScript Editor y pulsa **F5**. Si sale algún error, manda una captura.
 4. **Reinicia NinjaTrader** para que aparezca el menú del AddOn.
 5. En el Control Center: **New → Command Pro Clone**.

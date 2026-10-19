@@ -1,13 +1,18 @@
 // Fuentes de precio del MNQ para Juanitos Funding.
+//  - nt:       MNQ en TIEMPO REAL desde NinjaTrader (puente CCBridge, http://localhost:8793/api/market).
 //  - yahoo:    MNQ=F de Yahoo Finance (gratis, con ~10 min de retraso). Pasa por el proxy de Vite (/yahoo).
 //  - sim-live: mercado simulado, 1 vela por minuto real.
 //  - sim-fast: mercado simulado acelerado 60× (1 vela de 1 min por segundo).
 import { MNQ, ny } from './plans';
+import { BRIDGE_URL } from '../panel/api';
+
+export const NT_INSTRUMENT = 'MNQ 12-26';
 
 export type Bar = { t: number; o: number; h: number; l: number; c: number };   // t = apertura (epoch s, UTC)
-export type SourceId = 'yahoo' | 'sim-live' | 'sim-fast';
+export type SourceId = 'nt' | 'yahoo' | 'sim-live' | 'sim-fast';
 
 export const SOURCES: { id: SourceId; label: string; note: string }[] = [
+  { id: 'nt', label: 'Tiempo real (NinjaTrader)', note: `Precio real de ${NT_INSTRUMENT} en tiempo real desde tu NinjaTrader. Necesita NinjaTrader abierto y conectado con el AddOn instalado.` },
   { id: 'yahoo', label: 'MNQ real (Yahoo)', note: 'Precio real del MNQ con unos 10 minutos de retraso.' },
   { id: 'sim-live', label: 'Simulado', note: 'Mercado inventado a velocidad real.' },
   { id: 'sim-fast', label: 'Simulado rápido', note: 'Mercado inventado 60× más rápido: un día en 24 minutos.' },
@@ -79,7 +84,10 @@ export class Market {
     this.stop();
     const gen = ++this.generation;
     this.bars = [];
-    if (this.source === 'yahoo') {
+    if (this.source === 'nt') {
+      void this.pollNt(gen);
+      this.timer = window.setInterval(() => void this.pollNt(gen), 1000);
+    } else if (this.source === 'yahoo') {
       void this.pollYahoo(gen, '5d');
       this.timer = window.setInterval(() => void this.pollYahoo(gen, '1d'), 15000);
     } else {
@@ -112,6 +120,30 @@ export class Market {
   private setStatus(ok: boolean, message: string) {
     this.status = { source: this.source, ok, message, updated: Date.now() };
     this.emit();
+  }
+
+  private ntBusy = false;
+  private async pollNt(gen: number) {
+    if (this.ntBusy) return;
+    this.ntBusy = true;
+    try {
+      const since = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
+      const res = await fetch(`${BRIDGE_URL}/api/market?instrument=${encodeURIComponent(NT_INSTRUMENT)}&since=${since}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json() as { loaded: boolean; error: string | null; last: number; bars: number[][] };
+      if (gen !== this.generation) return;
+      if (d.error) { this.setStatus(false, d.error); return; }
+      if (!d.loaded) { this.setStatus(false, 'Cargando datos de NinjaTrader…'); return; }
+      const lastT = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
+      for (const [t, o, h, l, c] of d.bars) if (t > lastT) this.bars.push({ t, o, h, l, c });
+      if (this.bars.length > 8000) this.bars.splice(0, this.bars.length - 8000);
+      if (d.last) this.last = d.last;
+      this.setStatus(true, `${NT_INSTRUMENT} en tiempo real · NinjaTrader`);
+    } catch {
+      if (gen === this.generation) this.setStatus(false, 'NinjaTrader no está abierto o no tiene el AddOn (localhost:8793)');
+    } finally {
+      this.ntBusy = false;
+    }
   }
 
   private async pollYahoo(gen: number, range: string) {

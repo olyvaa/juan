@@ -1,9 +1,9 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
-import { Minus, Pause, Play, Plus, Rocket, ShoppingBag, Trash2, Users } from 'lucide-react';
-import Chart, { type ChartMarker } from './Chart';
-import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group } from './engine';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
+import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
 import { SOURCES } from './market';
-import { PLANS, RULES, fmtNy, planById, type Plan } from './plans';
+import type { AccountInfo } from '../panel/api';
+import { PLANS, RULES, fmtNy, planById, tradingDay, type Plan } from './plans';
 import { STRATEGY_INFO, type StrategyKey } from './strategies';
 import { Section, StatusPill, Tile, Toggle, type Confirm } from '../panel/ui';
 import { signedUsd, tone, usd } from '../panel/format';
@@ -15,6 +15,8 @@ function useEngine() {
 }
 
 type Props = { ask: (c: Confirm) => void; notify: (text: string, error?: boolean) => void };
+/** Cuentas que da NinjaTrader por el puente (vacío si no está conectado). */
+type NtProps = { ntAccounts: AccountInfo[]; ntConnected: boolean };
 
 const STATUS: Record<AccountStatus, { label: string; kind: 'good' | 'warn' | 'bad' | 'neutral' }> = {
   evaluacion: { label: 'Evaluación', kind: 'neutral' },
@@ -174,136 +176,315 @@ function AccountRow({ a, e, ask }: { a: Account; e: Engine; ask: (c: Confirm) =>
   );
 }
 
-export function MisCuentas({ ask }: Props) {
+// ---- cuentas de examen REALES: el PnL lo da NinjaTrader
+function RealAccounts({ ntAccounts, ntConnected, ask }: NtProps & { ask: Props['ask'] }) {
+  const e = useEngine();
+  const [pick, setPick] = useState('');
+  const [planId, setPlanId] = useState(PLANS[1].id);
+  const tracked = Object.keys(e.state.real);
+  const available = ntAccounts.filter(a => !a.sim && !e.state.real[a.name]);
+
+  useEffect(() => { for (const a of ntAccounts) if (e.state.real[a.name]) e.observeReal(a.name, a.cash); }, [ntAccounts, e]);
+
+  return (
+    <Section
+      title="Cuentas reales (NinjaTrader)"
+      footer="Saldo, PnL y posiciones vienen de NinjaTrader en directo. El objetivo y el suelo de pérdida los calcula el panel con las reglas del plan; la cifra oficial es la de tu prop firm."
+    >
+      {!ntConnected && <div className="empty">Abre NinjaTrader con el AddOn para ver aquí el PnL de tus cuentas de examen reales.</div>}
+      {tracked.map(name => {
+        const r = e.state.real[name];
+        const plan = planById(r.planId)!;
+        const nt = ntAccounts.find(a => a.name === name);
+        const profit = nt ? nt.cash - r.start : 0;
+        const equity = nt ? nt.cash + nt.unrealized : 0;
+        const st = !nt ? { label: 'Sin datos', kind: 'neutral' as const }
+          : equity <= r.floor ? { label: 'Límite superado', kind: 'bad' as const }
+          : profit >= plan.target ? { label: 'Objetivo alcanzado', kind: 'good' as const }
+          : { label: 'Evaluación', kind: 'neutral' as const };
+        return (
+          <div className="row account" key={name}>
+            <div className="row-main">
+              <span className="row-title">{name} <span className="chip real">Real · NinjaTrader</span> <StatusPill kind={st.kind}>{st.label}</StatusPill></span>
+              <span className="row-sub">
+                {plan.name} · {nt ? (nt.positions.length ? nt.positions.map(p => `${p.instrument} ${p.qty > 0 ? '+' : ''}${p.qty} @ ${p.avgPrice}`).join(' · ') : 'Sin posición') : 'NinjaTrader no conectado'}
+              </span>
+              {nt && <Meter value={Math.max(0, profit)} max={plan.target} label={`Progreso de ${name} hacia el objetivo`} />}
+            </div>
+            <div className="acct-nums">
+              <span><small>Saldo</small>{nt ? usd(nt.cash) : '—'}</span>
+              <span className={tone(profit)}><small>Resultado</small>{nt ? signedUsd(profit) : '—'}</span>
+              <span className={tone(nt?.realized || 0)}><small>PnL día</small>{nt ? signedUsd(nt.realized) : '—'}</span>
+              <span className={tone(nt?.unrealized || 0)}><small>Abierto</small>{nt ? signedUsd(nt.unrealized) : '—'}</span>
+              <span><small>Margen hasta pérdida máx.</small>{nt ? usd(Math.max(0, equity - r.floor)) : '—'}</span>
+            </div>
+            <button type="button" className="icon-btn" aria-label={`Dejar de seguir ${name}`} title="Dejar de seguir"
+              onClick={() => ask({ title: `Dejar de seguir ${name}`, message: 'Solo se quita del panel. La cuenta de NinjaTrader no se toca.', action: 'Quitar', onConfirm: () => e.untrackReal(name) })}
+            ><X size={16} /></button>
+          </div>
+        );
+      })}
+      {ntConnected && available.length > 0 && (
+        <div className="row add-real">
+          <span className="row-sub">Seguir una cuenta de examen:</span>
+          <select className="select" value={pick} onChange={ev => setPick(ev.target.value)} aria-label="Cuenta de NinjaTrader">
+            <option value="">Elige cuenta…</option>
+            {available.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+          </select>
+          <select className="select" value={planId} onChange={ev => setPlanId(ev.target.value)} aria-label="Plan">
+            {PLANS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button type="button" className="btn primary" disabled={!pick} onClick={() => { e.trackReal(pick, planId, planById(planId)!.size); setPick(''); }}>Añadir</button>
+        </div>
+      )}
+      {ntConnected && tracked.length === 0 && available.length === 0 && <div className="empty">NinjaTrader no tiene cuentas reales (todas son Sim).</div>}
+    </Section>
+  );
+}
+
+export function MisCuentas({ ask, ntAccounts, ntConnected }: Props & NtProps) {
   const e = useEngine();
   const accts = e.state.accounts;
   const totalProfit = accts.reduce((s, a) => s + (a.balance - a.start) + e.unrealized(a), 0);
   const count = (s: AccountStatus) => accts.filter(a => a.status === s).length;
-  if (accts.length === 0) return <Section><div className="empty">Aún no tienes cuentas. Cómpralas en la <b>Tienda</b>.</div></Section>;
+  const real = <RealAccounts ntAccounts={ntAccounts} ntConnected={ntConnected} ask={ask} />;
+  if (accts.length === 0) return <>{real}<Section title="Cuentas simuladas (Juanitos Funding)"><div className="empty">Aún no tienes cuentas simuladas. Cómpralas en la <b>Tienda</b>.</div></Section></>;
   return (
     <>
+      {real}
       <div className="tiles">
         <Tile label="Resultado total" value={signedUsd(totalProfit)} valueTone={tone(totalProfit)} sub="Incluye posiciones abiertas" />
         <Tile label="En evaluación" value={count('evaluacion')} sub={`${count('superada')} superadas`} />
         <Tile label="Fondeadas" value={count('fondeada')} />
         <Tile label="Quemadas" value={count('quemada')} />
       </div>
-      <Section title="Cuentas" footer="Pulsa una cuenta para ver su progreso, el suelo de pérdida y sus operaciones.">
+      <Section title="Cuentas simuladas (Juanitos Funding)" footer="Pulsa una cuenta para ver su progreso, el suelo de pérdida y sus operaciones.">
         {accts.map(a => <AccountRow key={a.id} a={a} e={e} ask={ask} />)}
       </Section>
     </>
   );
 }
 
+
 // ------------------------------------------------------------------ Grupos
 const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'ambas', label: 'Ambas' }, { id: 'largos', label: 'Solo largos' }, { id: 'cortos', label: 'Solo cortos' },
 ];
 
-function NewGroup({ e, notify }: { e: Engine; notify: Props['notify'] }) {
-  const [name, setName] = useState('');
-  const [strategy, setStrategy] = useState<StrategyKey>('goatpro');
-  const [ids, setIds] = useState<string[]>([]);
-  const [qty, setQty] = useState(2);
-  const [tp, setTp] = useState(150);
-  const [sl, setSl] = useState(200);
-  const [direction, setDirection] = useState<Direction>('ambas');
-  const usable = e.state.accounts.filter(a => a.status === 'evaluacion' || a.status === 'fondeada');
-  const maxQty = Math.min(100, ...ids.map(id => planById(e.acc(id)?.planId || '')?.maxMicros ?? 100));
+type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number };
 
-  const create = () => {
-    if (!name.trim()) { notify('Ponle un nombre al grupo', true); return; }
-    if (ids.length === 0) { notify('Elige al menos una cuenta', true); return; }
-    e.createGroup({ name: name.trim(), strategy, accountIds: ids, qty: Math.min(qty, maxQty), tpUsd: tp, slUsd: sl, direction });
-    notify(`Grupo "${name.trim()}" creado. Lánzalo cuando quieras.`);
-    setName(''); setIds([]);
+/** Formulario para crear un grupo o editarlo (nombre, estrategia, dirección y cuentas). */
+function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial: FormValues; editing?: Group; onDone: () => void; notify: Props['notify'] }) {
+  const [v, setV] = useState<FormValues>(initial);
+  const set = (patch: Partial<FormValues>) => setV(x => ({ ...x, ...patch }));
+  const usable = e.state.accounts.filter(a => a.status === 'evaluacion' || a.status === 'fondeada' || v.accountIds.includes(a.id));
+  const maxQty = Math.min(100, ...v.accountIds.map(id => planById(e.acc(id)?.planId || '')?.maxMicros ?? 100));
+
+  const save = () => {
+    if (!v.name.trim()) { notify('Ponle un nombre al grupo', true); return; }
+    if (v.accountIds.length === 0) { notify('Elige al menos una cuenta', true); return; }
+    if (editing) {
+      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds });
+      notify(`Grupo "${v.name.trim()}" actualizado`);
+    } else {
+      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl });
+      notify(`Grupo "${v.name.trim()}" creado. Ajusta cada cuenta en la tabla y pulsa Activar.`);
+    }
+    onDone();
   };
 
   return (
-    <Section title="Nuevo grupo" footer="TP y SL en dólares por cuenta (para toda su posición). Con 2 micros, 150 $ = 37,5 puntos.">
-      <div className="form">
-        <label className="field"><span>Nombre</span>
-          <input className="input" value={name} placeholder="Ej. Evaluaciones 50K" onChange={ev => setName(ev.target.value)} />
+    <div className="form">
+      <div className="field-row">
+        <label className="field grow"><span>Nombre</span>
+          <input className="input" value={v.name} placeholder="Ej. Evaluaciones 50K" onChange={ev => set({ name: ev.target.value })} />
         </label>
         <label className="field"><span>Estrategia</span>
-          <select className="select" value={strategy} onChange={ev => setStrategy(ev.target.value as StrategyKey)}>
+          <select className="select" value={v.strategy} onChange={ev => set({ strategy: ev.target.value as StrategyKey })}>
             {(Object.keys(STRATEGY_INFO) as StrategyKey[]).map(k => <option key={k} value={k}>{STRATEGY_INFO[k].name}</option>)}
           </select>
         </label>
-        <p className="muted field-note">{STRATEGY_INFO[strategy].note}</p>
-        <div className="field-row">
-          <div className="field"><span>Contratos por cuenta</span><Stepper label="Contratos" value={Math.min(qty, maxQty)} min={1} max={maxQty} onChange={setQty} suffix=" ct" /></div>
-          <div className="field"><span>TP $</span><Stepper label="Take profit" value={tp} min={25} max={5000} step={25} onChange={setTp} /></div>
-          <div className="field"><span>SL $</span><Stepper label="Stop loss" value={sl} min={25} max={5000} step={25} onChange={setSl} /></div>
-          <label className="field"><span>Dirección</span>
-            <select className="select" value={direction} onChange={ev => setDirection(ev.target.value as Direction)}>
-              {DIRECTIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="field"><span>Cuentas ({ids.length})</span>
-          {usable.length === 0
-            ? <span className="muted">No tienes cuentas activas. Cómpralas en la Tienda.</span>
-            : (
-              <div className="pick-list">
-                {usable.map(a => {
-                  const on = ids.includes(a.id);
-                  const busy = e.groupOf(a.id);
-                  return (
-                    <label key={a.id} className={`pick${on ? ' on' : ''}`}>
-                      <Toggle on={on} label={`Incluir ${a.id}`} onChange={v => setIds(x => v ? [...x, a.id] : x.filter(y => y !== a.id))} />
-                      <span><b>{a.id}</b><small>{planById(a.planId)?.name} · {STATUS[a.status].label}{busy ? ` · en ${busy.name}` : ''}</small></span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-        </div>
-        <div><button type="button" className="btn primary" onClick={create}><Users size={16} /> Crear grupo</button></div>
+        <label className="field"><span>Dirección</span>
+          <select className="select" value={v.direction} onChange={ev => set({ direction: ev.target.value as Direction })}>
+            {DIRECTIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </select>
+        </label>
       </div>
-    </Section>
+      <p className="muted field-note">{STRATEGY_INFO[v.strategy].note}</p>
+      {!editing && (
+        <div className="field-row">
+          <div className="field"><span>CT por defecto</span><Stepper label="Contratos" value={Math.min(v.qty, maxQty)} min={1} max={maxQty} onChange={q => set({ qty: q })} suffix=" ct" /></div>
+          <div className="field"><span>TP $ por defecto</span><Stepper label="Take profit" value={v.tp} min={25} max={5000} step={25} onChange={tp => set({ tp })} /></div>
+          <div className="field"><span>SL $ por defecto</span><Stepper label="Stop loss" value={v.sl} min={25} max={5000} step={25} onChange={sl => set({ sl })} /></div>
+        </div>
+      )}
+      <div className="field"><span>Cuentas ({v.accountIds.length})</span>
+        {usable.length === 0
+          ? <span className="muted">No tienes cuentas activas. Cómpralas en la Tienda.</span>
+          : (
+            <div className="pick-list">
+              {usable.map(a => {
+                const on = v.accountIds.includes(a.id);
+                const busy = e.groupOf(a.id);
+                return (
+                  <label key={a.id} className={`pick${on ? ' on' : ''}`}>
+                    <Toggle on={on} label={`Incluir ${a.id}`} onChange={x => set({ accountIds: x ? [...v.accountIds, a.id] : v.accountIds.filter(y => y !== a.id) })} />
+                    <span><b>{a.id}</b><small>{planById(a.planId)?.name} · {STATUS[a.status].label}{busy && busy.id !== editing?.id ? ` · en ${busy.name}` : ''}</small></span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+      </div>
+      <div className="actions tight">
+        <button type="button" className="btn primary" onClick={save}>{editing ? 'Guardar cambios' : <><Users size={16} /> Crear grupo</>}</button>
+        <button type="button" className="btn" onClick={onDone}>Cancelar</button>
+      </div>
+    </div>
   );
 }
 
-function GroupCard({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['ask']; notify: Props['notify'] }) {
-  const open = e.state.accounts.filter(a => a.position?.groupId === g.id).length;
-  const launch = () => { const err = e.launchGroup(g.id); notify(err || `"${g.name}" operando con ${STRATEGY_INFO[g.strategy].name}`, !!err); };
+/** Celda numérica editable: guarda al salir del campo o con Enter. */
+function NumCell({ value, onCommit, disabled, label, placeholder }: { value: number; onCommit: (n: number) => void; disabled?: boolean; label: string; placeholder?: string }) {
+  const [text, setText] = useState(value ? String(value) : '');
+  useEffect(() => { setText(value ? String(value) : ''); }, [value]);
+  const commit = () => { const n = Number(text.replace(',', '.')); if (Number.isFinite(n) && n !== value) onCommit(n); else setText(value ? String(value) : ''); };
   return (
-    <article className="card">
-      <header className="card-head">
-        <div><h3>{g.name}</h3><p className="card-tag">{STRATEGY_INFO[g.strategy].name} · {g.accountIds.length} cuentas · {g.qty} ct · TP {usd(g.tpUsd)} / SL {usd(g.slUsd)}</p></div>
-        {g.running ? <StatusPill kind="good">Operando</StatusPill> : <StatusPill kind="neutral">Detenido</StatusPill>}
+    <input
+      className="cell-input" inputMode="decimal" aria-label={label} disabled={disabled} placeholder={placeholder}
+      value={text} onChange={ev => setText(ev.target.value)} onBlur={commit}
+      onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
+/** Estado de una cuenta dentro del grupo (columna ESTADO). */
+function memberState(a: Account, m: Member, today: string): { label: string; kind: 'good' | 'warn' | 'bad' | 'neutral' | 'live' } {
+  if (a.status === 'quemada') return { label: 'MLL', kind: 'bad' };
+  if (a.status === 'superada') return { label: 'OBJETIVO', kind: 'good' };
+  if (a.position) return { label: a.position.side > 0 ? 'EN LARGO' : 'EN CORTO', kind: 'live' };
+  if (m.stopDay === today) return { label: m.stopReason, kind: m.stopReason === 'PDPT' ? 'good' : 'bad' };
+  if (!m.enabled) return { label: 'OFF', kind: 'neutral' };
+  const last = a.trades[0];
+  if (last && tradingDay(last.exitT - 60) === today) {
+    if (last.reason === 'Take profit') return { label: 'SALIDA TP', kind: 'good' };
+    if (last.reason === 'Stop loss') return { label: 'SALIDA SL', kind: 'bad' };
+    return { label: 'CERRADA', kind: 'neutral' };
+  }
+  return { label: 'ESPERANDO', kind: 'neutral' };
+}
+
+function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['ask']; notify: Props['notify'] }) {
+  const [open, setOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const bars = e.market.bars;
+  const today = tradingDay(bars.length ? bars[bars.length - 1].t + 60 : Math.floor(Date.now() / 1000));
+  const launch = () => { const err = e.launchGroup(g.id); notify(err || `"${g.name}" operando con ${STRATEGY_INFO[g.strategy].name}`, !!err); };
+  const info = STRATEGY_INFO[g.strategy];
+
+  return (
+    <section className="monitor">
+      <header className="monitor-head">
+        <div className="monitor-title">
+          <span className="monitor-avatar">{g.name.slice(0, 1).toUpperCase()}</span>
+          <h3>{g.name}</h3>
+          <button type="button" className="icon-btn" aria-label={open ? 'Ocultar cuentas' : 'Mostrar cuentas'} onClick={() => setOpen(!open)}>{open ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+        </div>
+        <div className="monitor-meta">
+          {g.running ? <StatusPill kind="good">ACTIVO</StatusPill> : <StatusPill kind="neutral">INACTIVO</StatusPill>}
+          <span>{info.name} · MNQ · M{info.tf}</span>
+          <span>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
+          <span>{g.accountIds.length} ctas</span>
+          <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
+        </div>
+        <div className="actions tight">
+          {g.running
+            ? <>
+              <button type="button" className="btn warn" onClick={() => e.stopGroup(g.id, false)}><Pause size={16} /> Detener</button>
+              <button type="button" className="btn danger-ghost" onClick={() => ask({ title: `Detener y cerrar "${g.name}"`, message: 'Se detiene el grupo y se cierran a mercado sus posiciones abiertas.', action: 'Detener y cerrar', destructive: true, onConfirm: () => e.stopGroup(g.id, true) })}>Detener y cerrar</button>
+            </>
+            : <button type="button" className="btn primary" onClick={launch}><Play size={16} /> Activar</button>}
+          <button type="button" className="btn" disabled={g.running} title={g.running ? 'Detén el grupo para editarlo' : undefined} onClick={() => setEditing(!editing)}><Pencil size={15} /> Editar</button>
+          <button type="button" className="btn danger-ghost" disabled={g.running}
+            onClick={() => ask({ title: `Eliminar "${g.name}"`, message: 'Se borra el grupo. Las cuentas no se tocan.', action: 'Eliminar', destructive: true, onConfirm: () => e.deleteGroup(g.id) })}
+          ><Trash2 size={15} /> Eliminar</button>
+        </div>
       </header>
-      <div className="mini-stats">
-        <span><small>Operaciones</small>{g.trades}</span>
-        <span className={tone(g.pnl)}><small>Resultado</small>{signedUsd(g.pnl)}</span>
-        <span><small>Posiciones abiertas</small>{open}</span>
-        <span><small>Dirección</small>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
-      </div>
-      <div className="chips">{g.accountIds.map(id => <span key={id} className="chip">{id}</span>)}</div>
-      <div className="actions tight">
-        {g.running
-          ? <>
-            <button type="button" className="btn warn" onClick={() => e.stopGroup(g.id, false)}><Pause size={16} /> Detener</button>
-            <button type="button" className="btn danger-ghost" onClick={() => ask({ title: `Detener y cerrar "${g.name}"`, message: 'Se detiene el grupo y se cierran a mercado sus posiciones abiertas.', action: 'Detener y cerrar', destructive: true, onConfirm: () => e.stopGroup(g.id, true) })}>Detener y cerrar</button>
-          </>
-          : <>
-            <button type="button" className="btn primary" onClick={launch}><Play size={16} /> Lanzar</button>
-            <button type="button" className="btn danger-ghost" onClick={() => e.deleteGroup(g.id)}><Trash2 size={15} /> Eliminar</button>
-          </>}
-      </div>
-    </article>
+
+      {editing && !g.running && (
+        <GroupForm e={e} editing={g} notify={notify} onDone={() => setEditing(false)}
+          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd }} />
+      )}
+
+      {open && (
+        <div className="monitor-table-wrap">
+          <table className="monitor-table">
+            <thead>
+              <tr>
+                <th>Estado</th><th className="left">Cuenta</th><th>Símbolo</th><th>Pos</th><th>Balance</th><th>PnL día</th>
+                <th>Último PnL</th><th>Open</th><th>CT</th><th>PDLL</th><th>PDPT</th><th>TP $</th><th>SL $</th><th>OPS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.accountIds.map(id => {
+                const a = e.acc(id), m = g.members[id];
+                if (!a || !m) return null;
+                const unreal = e.unrealized(a);
+                const dayPnl = (a.daily[today] || 0) + unreal;
+                const last = a.trades[0];
+                const st = memberState(a, m, today);
+                const lock = g.running;
+                const upd = (patch: Partial<Member>) => e.updateMember(g.id, id, patch);
+                return (
+                  <tr key={id} className={m.enabled ? '' : 'off'}>
+                    <td><span className={`state ${st.kind}`}>{st.label}</span></td>
+                    <td className="left">
+                      <span className="acct-name">{a.id}</span>
+                      <span className={`phase ${a.status}`}>{STATUS[a.status].label}</span>
+                    </td>
+                    <td>{a.position ? 'MNQ' : '—'}</td>
+                    <td>{a.position ? `${a.position.side > 0 ? '+' : '−'}${a.position.qty}` : '—'}</td>
+                    <td>{usd(a.balance)}</td>
+                    <td className={tone(dayPnl)}>{signedUsd(dayPnl)}</td>
+                    <td className={`strong ${tone(last?.pnl || 0)}`}>{last ? signedUsd(last.pnl) : '—'}</td>
+                    <td className={tone(unreal)}>{signedUsd(unreal)}</td>
+                    <td><NumCell label={`CT de ${id}`} value={m.qty} disabled={lock} onCommit={n => upd({ qty: n })} /></td>
+                    <td><NumCell label={`PDLL de ${id}`} value={m.pdll} disabled={lock} placeholder="—" onCommit={n => upd({ pdll: n })} /></td>
+                    <td><NumCell label={`PDPT de ${id}`} value={m.pdpt} disabled={lock} placeholder="—" onCommit={n => upd({ pdpt: n })} /></td>
+                    <td><NumCell label={`TP de ${id}`} value={m.tpUsd} disabled={lock} onCommit={n => upd({ tpUsd: n })} /></td>
+                    <td><NumCell label={`SL de ${id}`} value={m.slUsd} disabled={lock} onCommit={n => upd({ slUsd: n })} /></td>
+                    <td><Toggle on={m.enabled} label={`OPS de ${id}`} onChange={x => upd({ enabled: x })} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
 export function Grupos({ ask, notify }: Props) {
   const e = useEngine();
+  const [creating, setCreating] = useState(e.state.groups.length === 0);
   return (
     <>
-      {e.state.groups.length > 0 && (
-        <div className="cards">{e.state.groups.map(g => <GroupCard key={g.id} g={g} e={e} ask={ask} notify={notify} />)}</div>
+      <div className="groups-intro">
+        <button type="button" className="btn primary" onClick={() => setCreating(!creating)}><Plus size={16} /> Nuevo grupo</button>
+        <p className="muted">
+          Estrategia + cuentas. En la tabla ajustas cada cuenta: CT, TP $, SL $, PDLL (pérdida del día) y PDPT (objetivo del día).
+          OPS apaga una cuenta sin sacarla del grupo. Con el grupo activo, Editar y la tabla quedan bloqueados.
+        </p>
+      </div>
+      {creating && (
+        <Section title="Nuevo grupo">
+          <GroupForm e={e} notify={notify} onDone={() => setCreating(false)}
+            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200 }} />
+        </Section>
       )}
-      <NewGroup e={e} notify={notify} />
+      {e.state.groups.map(g => <GroupMonitor key={g.id} g={g} e={e} ask={ask} notify={notify} />)}
+      {e.state.groups.length === 0 && !creating && <Section><div className="empty">Aún no hay grupos.</div></Section>}
     </>
   );
 }
@@ -311,41 +492,12 @@ export function Grupos({ ask, notify }: Props) {
 // ------------------------------------------------------------------ Mercado
 export function Mercado() {
   const e = useEngine();
-  const [tf, setTf] = useState<1 | 5>(5);
-  const [groupFilter, setGroupFilter] = useState('');
   const m = e.market;
-  const version = e.version;
-  const bars = useMemo(() => { void version; return m.bars.slice(-3000); }, [m, version]);
-  const markers = useMemo<ChartMarker[]>(() => {
-    void version;
-    const out: ChartMarker[] = [];
-    const seen = new Set<string>();
-    for (const a of e.state.accounts) {
-      for (const t of a.trades.slice(0, 60)) {
-        if (groupFilter && t.groupId !== groupFilter) continue;
-        const k = `${t.groupId}-${t.entryT}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        out.push({ t: t.entryT, side: t.side, kind: 'entry', text: STRATEGY_INFO[t.strategy].name });
-        out.push({ t: t.exitT - 60, side: t.side, kind: 'exit', text: t.reason, win: t.pnl > 0 });
-      }
-      const p = a.position;
-      if (p && (!groupFilter || p.groupId === groupFilter) && !seen.has(`${p.groupId}-${p.entryT}`)) {
-        seen.add(`${p.groupId}-${p.entryT}`);
-        out.push({ t: p.entryT, side: p.side, kind: 'entry', text: `${STRATEGY_INFO[p.strategy].name} (abierta)` });
-      }
-    }
-    return out;
-  }, [e, version, groupFilter]);
-
+  const bars = m.bars;
   const lastBar = bars[bars.length - 1];
-  const dayOpen = useMemo(() => {
-    if (!lastBar) return 0;
-    const first = bars.find(b => b.t >= lastBar.t - 86400);
-    return first ? first.o : 0;
-  }, [bars, lastBar]);
-  const change = dayOpen ? m.last - dayOpen : 0;
-  const source = SOURCES.find(s => s.id === e.state.source)!;
+  const dayAgo = lastBar ? bars.find(b => b.t >= lastBar.t - 86400) : undefined;
+  const change = dayAgo && m.last ? m.last - dayAgo.o : 0;
+  const source = SOURCES.find(s => s.id === e.state.source) || SOURCES[0];
 
   return (
     <>
@@ -354,27 +506,16 @@ export function Mercado() {
           <span className="tile-label">MNQ · Micro E-mini Nasdaq-100</span>
           <div className="market-price">
             <strong>{m.last ? m.last.toFixed(2) : '—'}</strong>
-            {dayOpen > 0 && <span className={tone(change)}>{change > 0 ? '+' : ''}{change.toFixed(2)} ({((change / dayOpen) * 100).toFixed(2)} %) 24 h</span>}
+            {dayAgo && <span className={tone(change)}>{change > 0 ? '+' : ''}{change.toFixed(2)} ({((change / dayAgo.o) * 100).toFixed(2)} %) 24 h</span>}
           </div>
           <span className="muted">{lastBar ? `Última vela cerrada: ${fmtNy(lastBar.t)} NY` : 'Esperando datos…'}</span>
         </div>
         <div className="market-controls">
-          {m.status.ok ? <StatusPill kind={e.state.source === 'yahoo' ? 'warn' : 'neutral'}>{m.status.message}</StatusPill> : <StatusPill kind="bad">{m.status.message}</StatusPill>}
+          {m.status.ok
+            ? <StatusPill kind={e.state.source === 'nt' ? 'good' : e.state.source === 'yahoo' ? 'warn' : 'neutral'}>{m.status.message}</StatusPill>
+            : <StatusPill kind="bad">{m.status.message}</StatusPill>}
         </div>
       </div>
-
-      <Section>
-        <div className="chart-toolbar">
-          <div className="segmented" role="radiogroup" aria-label="Temporalidad">
-            {([1, 5] as const).map(x => <button key={x} type="button" role="radio" aria-checked={tf === x} className={tf === x ? 'on' : ''} onClick={() => setTf(x)}>{x} min</button>)}
-          </div>
-          <select className="select" value={groupFilter} onChange={ev => setGroupFilter(ev.target.value)} aria-label="Operaciones a mostrar">
-            <option value="">Operaciones de todos los grupos</option>
-            {e.state.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        </div>
-        <Chart bars={bars} tf={tf} markers={markers} />
-      </Section>
 
       <Section title="Fuente de precio" footer={source.note}>
         <div className="row">

@@ -500,7 +500,7 @@ export default function Panel() {
         )}
 
         {view === 'jf-tienda' && <Tienda ask={setConfirm} notify={notify} />}
-        {view === 'jf-cuentas' && <MisCuentas ask={setConfirm} notify={notify} />}
+        {view === 'jf-cuentas' && <MisCuentas ask={setConfirm} notify={notify} ntAccounts={connected ? state.accounts : []} ntConnected={connected} />}
         {view === 'jf-grupos' && <Grupos ask={setConfirm} notify={notify} />}
         {view === 'jf-mercado' && <Mercado />}
         {view === 'resumen' && <Resumen {...props} go={setView} />}

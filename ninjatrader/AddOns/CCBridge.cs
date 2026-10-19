@@ -22,6 +22,7 @@ using NinjaTrader.Cbi;
 //     internet puede mandar ordenes.
 //
 //  GET  /api/state
+//  GET  /api/market?instrument=MNQ%2012-26&since=<epoch>   velas de 1 min en tiempo real (solo lectura)
 //  POST /api/strategies/{id}/pause | resume | flatten
 //  POST /api/killswitch
 //  POST /api/copier/start   {"master":"Sim101","followers":[{"account":"Sim102","multiplier":1,"inverse":false}]}
@@ -63,6 +64,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 		public static void Stop()
 		{
 			running = false;
+			CCMarketFeed.Stop();
 			try { if (listener != null) listener.Close(); } catch { }
 			listener = null;
 		}
@@ -110,6 +112,13 @@ namespace NinjaTrader.NinjaScript.AddOns
 
 				string path = req.Url.AbsolutePath.TrimEnd('/');
 				if (req.HttpMethod == "GET" && path == "/api/state") { Send(res, 200, StateJson()); return; }
+				if (req.HttpMethod == "GET" && path == "/api/market")
+				{
+					long since;
+					long.TryParse(req.QueryString["since"], out since);
+					Send(res, 200, CCMarketFeed.ToJson(req.QueryString["instrument"], since));
+					return;
+				}
 
 				if (req.HttpMethod != "POST") { Send(res, 404, "{\"error\":\"no encontrado\"}"); return; }
 				if (req.Headers["X-CC-Panel"] != "1") { Send(res, 403, "{\"error\":\"falta cabecera X-CC-Panel\"}"); return; }

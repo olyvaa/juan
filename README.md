@@ -64,10 +64,16 @@ Sección del panel que funciona **sin NinjaTrader**:
   pérdida máxima con trailing al cierre del día, sin límite diario, consistencia del 50 % y máximo de micros.
 - **Mis cuentas:** saldo, progreso al objetivo, margen hasta la pérdida máxima y operaciones. Estados: evaluación,
   superada, fondeada y quemada.
-- **Grupos:** cuentas + estrategia (GoatPro, GYR, RangOpenNY, JetF1) + contratos, TP $, SL $ y dirección.
-  Se lanzan y se detienen. Una cuenta solo puede estar en un grupo activo.
-- **Mercado:** gráfico de velas del MNQ con las operaciones marcadas. Tiene tres fuentes de precio:
-  *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite (solo con `npm run dev`/`npm run panel`);
+- **Mis cuentas** también muestra las **cuentas de examen reales** de NinjaTrader (las no Sim), con saldo, PnL del día,
+  abierto y posiciones que vienen de NinjaTrader en directo. El progreso al objetivo y el suelo de pérdida los calcula el
+  panel con las reglas del plan que elijas.
+- **Grupos:** estrategia (GoatPro, GYR, RangOpenNY, JetF1) + cuentas, con una tabla de monitorización por cuenta: estado,
+  posición, balance, PnL del día, último PnL, abierto y casillas editables de CT, PDLL (pérdida del día), PDPT
+  (objetivo del día), TP $ y SL $, más un interruptor OPS. Activar / Detener / Editar / Eliminar. Con el grupo activo, la
+  edición se bloquea. Una cuenta solo puede estar en un grupo activo.
+- **Mercado:** precio del MNQ y fuente de datos. Hay cuatro fuentes:
+  *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`);
+  *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite;
   *Simulado*, y *Simulado rápido* (60×).
 
 Todo es simulado y se guarda en el navegador (`localStorage`, clave `jf-state-v1`). Solo simula mientras la pestaña
@@ -79,7 +85,7 @@ dos se tocan en la misma vela, cierre a las 16:55 NY y el trailing se bloquea en
 - `src/funding/market.ts`: fuentes de precio y velas.
 - `src/funding/strategies.ts`: señales de las 4 estrategias (traducidas de `ninjatrader/Strategies`).
 - `src/funding/engine.ts`: cuentas, reglas, grupos y ejecución simulada.
-- `src/funding/FundingViews.tsx` y `Chart.tsx`: vistas y gráfico (lightweight-charts).
+- `src/funding/FundingViews.tsx`: vistas (tienda, cuentas, monitor de grupos y mercado).
 
 ### Archivos del panel
 

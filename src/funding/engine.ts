@@ -24,17 +24,34 @@ export type Account = {
   daily: Record<string, number>; position: Position | null; trades: Trade[]; fees: number;
 };
 
+/** Configuración de cada cuenta dentro de un grupo (editable en la tabla del grupo). */
+export type Member = {
+  qty: number; tpUsd: number; slUsd: number;
+  pdll: number;      // pérdida máxima del día ($, 0 = sin límite): al llegar, cierra y para hasta mañana
+  pdpt: number;      // objetivo del día ($, 0 = sin objetivo): al llegar, cierra y para hasta mañana
+  enabled: boolean;  // OPS: si está apagado, esta cuenta no abre operaciones
+  stopDay: string; stopReason: string;
+};
+
+export const newMember = (qty: number, tpUsd: number, slUsd: number): Member =>
+  ({ qty, tpUsd, slUsd, pdll: 0, pdpt: 0, enabled: true, stopDay: '', stopReason: '' });
+
 export type Group = {
   id: string; name: string; strategy: StrategyKey; accountIds: string[];
-  qty: number; tpUsd: number; slUsd: number; direction: Direction;
+  qty: number; tpUsd: number; slUsd: number; direction: Direction;   // valores por defecto para cuentas nuevas
+  members: Record<string, Member>;
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
   jet: { day: string; up: number; down: number; expires: number } | null;
 };
 
+/** Cuenta de examen REAL de NinjaTrader que el panel sigue (el PnL viene de NinjaTrader). */
+export type RealTrack = { planId: string; start: number; highEod: number; floor: number; lastDay: string };
+
 type State = {
   version: 1; seq: number; spent: number; source: SourceId; processedT: number;
   accounts: Account[]; groups: Group[]; log: string[];
+  real: Record<string, RealTrack>;
 };
 
 const KEY = 'jf-state-v1';
@@ -43,13 +60,21 @@ const roundTick = (p: number) => Math.round(p / tick) * tick;
 const usdToPts = (usd: number, qty: number) => Math.max(tick, roundTick(usd / (qty * MNQ.pointValue)));
 
 function emptyState(): State {
-  return { version: 1, seq: 0, spent: 0, source: 'sim-fast', processedT: 0, accounts: [], groups: [], log: [] };
+  return { version: 1, seq: 0, spent: 0, source: 'nt', processedT: 0, accounts: [], groups: [], log: [], real: {} };
 }
 
 function loadState(): State {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null') as State | null;
-    if (s && s.version === 1 && Array.isArray(s.accounts) && Array.isArray(s.groups)) return s;
+    if (s && s.version === 1 && Array.isArray(s.accounts) && Array.isArray(s.groups)) {
+      // Datos guardados por versiones anteriores del panel
+      s.real = s.real || {};
+      for (const g of s.groups) {
+        g.members = g.members || {};
+        for (const id of g.accountIds) g.members[id] = g.members[id] || newMember(g.qty, g.tpUsd, g.slUsd);
+      }
+      return s;
+    }
   } catch { /* datos corruptos o navegador sin almacenamiento */ }
   return emptyState();
 }
@@ -117,10 +142,59 @@ export class Engine {
   }
 
   // -------------------------------------------------------------- grupos
-  createGroup(g: Omit<Group, 'id' | 'running' | 'startedAt' | 'trades' | 'pnl' | 'lastExitT' | 'lastNyorDay' | 'jet'>) {
+  createGroup(g: Omit<Group, 'id' | 'running' | 'startedAt' | 'trades' | 'pnl' | 'lastExitT' | 'lastNyorDay' | 'jet' | 'members'>) {
     this.state.seq++;
-    this.state.groups.push({ ...g, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
+    const members: Record<string, Member> = {};
+    for (const id of g.accountIds) members[id] = newMember(g.qty, g.tpUsd, g.slUsd);
+    this.state.groups.push({ ...g, members, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
     this.changed();
+  }
+
+  /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */
+  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[] }) {
+    const g = this.group(id);
+    if (!g || g.running) return;
+    const members: Record<string, Member> = {};
+    for (const a of patch.accountIds) members[a] = g.members[a] || newMember(g.qty, g.tpUsd, g.slUsd);
+    Object.assign(g, patch, { members });
+    this.changed();
+  }
+
+  /** Cambiar CT / TP / SL / PDLL / PDPT / OPS de una cuenta del grupo. Se aplica a las siguientes entradas. */
+  updateMember(groupId: string, accountId: string, patch: Partial<Member>) {
+    const m = this.group(groupId)?.members[accountId];
+    if (!m) return;
+    const plan = planById(this.acc(accountId)?.planId || '');
+    Object.assign(m, patch);
+    if (plan) m.qty = Math.max(1, Math.min(Math.round(m.qty) || 1, plan.maxMicros));
+    m.tpUsd = Math.max(1, m.tpUsd || 1);
+    m.slUsd = Math.max(1, m.slUsd || 1);
+    m.pdll = Math.max(0, m.pdll || 0);
+    m.pdpt = Math.max(0, m.pdpt || 0);
+    this.changed();
+  }
+
+  // -------------------------------------------------------------- cuentas reales (NinjaTrader)
+  trackReal(name: string, planId: string, start: number) {
+    const plan = planById(planId);
+    if (!plan) return;
+    this.state.real[name] = { planId, start, highEod: start, floor: start - plan.maxLoss, lastDay: '' };
+    this.changed();
+  }
+
+  untrackReal(name: string) { delete this.state.real[name]; this.changed(); }
+
+  /** Actualiza el suelo trailing de las cuentas reales con el saldo que da NinjaTrader. */
+  observeReal(name: string, cash: number) {
+    const r = this.state.real[name];
+    const plan = r && planById(r.planId);
+    if (!r || !plan) return;
+    const day = tradingDay(Math.floor(Date.now() / 1000));
+    if (r.lastDay && r.lastDay !== day) {
+      r.highEod = Math.max(r.highEod, cash);
+      r.floor = Math.min(r.start, Math.max(r.floor, r.highEod - plan.maxLoss));
+    }
+    if (r.lastDay !== day) { r.lastDay = day; this.changed(); }
   }
 
   deleteGroup(id: string) {
@@ -132,8 +206,8 @@ export class Engine {
   launchGroup(id: string): string | null {
     const g = this.group(id);
     if (!g) return 'El grupo no existe.';
-    const usable = g.accountIds.map(x => this.acc(x)).filter((a): a is Account => !!a && (a.status === 'evaluacion' || a.status === 'fondeada'));
-    if (usable.length === 0) return 'El grupo no tiene cuentas activas (en evaluación o fondeadas).';
+    const usable = g.accountIds.map(x => this.acc(x)).filter((a): a is Account => !!a && g.members[a.id]?.enabled !== false && (a.status === 'evaluacion' || a.status === 'fondeada'));
+    if (usable.length === 0) return 'El grupo no tiene cuentas activas (en evaluación o fondeadas, con OPS encendido).';
     const busy = usable.find(a => this.state.groups.some(o => o.running && o.id !== g.id && o.accountIds.includes(a.id)));
     if (busy) return `${busy.id} ya está operando en otro grupo. Una cuenta solo puede estar en un grupo activo.`;
     g.running = true;
@@ -199,7 +273,7 @@ export class Engine {
     const last = bars[bars.length - 1].t;
     if (this.freshStart) {
       this.freshStart = false;
-      const sim = this.state.source !== 'yahoo';
+      const sim = this.state.source === 'sim-live' || this.state.source === 'sim-fast';
       // En el simulador cada apertura genera un mercado nuevo: las posiciones anteriores se anulan.
       if (sim) {
         let voided = 0;
@@ -231,6 +305,22 @@ export class Engine {
     // 2. Salidas por SL / TP y liquidación por pérdida máxima
     for (const a of this.state.accounts) if (a.position) this.exitCheck(a, b, false);
 
+    // 2b. Límites del día por cuenta (PDLL / PDPT) de los grupos en marcha
+    for (const g of this.state.groups) {
+      if (!g.running) continue;
+      for (const id of g.accountIds) {
+        const m = g.members[id], a = this.acc(id);
+        if (!m || !a || (!m.pdll && !m.pdpt) || m.stopDay === day) continue;
+        const open = a.position ? a.position.side * (b.c - a.position.entry) * MNQ.pointValue * a.position.qty : 0;
+        const dayPnl = (a.daily[day] || 0) + open;
+        const reason = m.pdll && dayPnl <= -m.pdll ? 'PDLL' : m.pdpt && dayPnl >= m.pdpt ? 'PDPT' : '';
+        if (!reason) continue;
+        if (a.position) this.close(a, b.c, b.t + 60, reason === 'PDLL' ? 'Pérdida del día (PDLL)' : 'Objetivo del día (PDPT)');
+        m.stopDay = day; m.stopReason = reason;
+        this.log(`${a.id}: ${reason} alcanzado (${Math.round(dayPnl)} $). Sin más operaciones hoy`, b.t + 60);
+      }
+    }
+
     // 3. Cierre obligatorio antes del cierre de sesión
     if (closeMin >= hm(RULES.flattenAt) && closeMin < hm('18:00'))
       for (const a of this.state.accounts) if (a.position) this.close(a, b.c, b.t + 60, 'Cierre de sesión');
@@ -256,7 +346,7 @@ export class Engine {
         sig = rangOpenSignal(bars5);
         if (sig) g.lastNyorDay = day;
       }
-      if (sig) this.openGroup(g, sig, b.c, b.t + 60);
+      if (sig) this.openGroup(g, sig, b.c, b.t + 60, day);
     }
   }
 
@@ -274,7 +364,7 @@ export class Engine {
     if (!hitUp && !hitDn) return;
     const level = hitUp ? j.up : j.down;
     j.up = 0; j.down = 0;                           // OCO: solo una entrada por día
-    this.openGroup(g, hitUp ? 1 : -1, level, b.t);
+    this.openGroup(g, hitUp ? 1 : -1, level, b.t, day);
     // La entrada ocurre DENTRO de esta vela: se revisa ya su stop (supuesto conservador)
     for (const a of this.state.accounts) if (a.position?.groupId === g.id && a.position.entryT === b.t) this.exitCheck(a, b, true);
   }
@@ -289,20 +379,21 @@ export class Engine {
     if (a.position) this.checkLiquidation(a, b);
   }
 
-  private openGroup(g: Group, side: 1 | -1, price: number, t: number) {
+  private openGroup(g: Group, side: 1 | -1, price: number, t: number, day: string) {
     if (g.direction === 'largos' && side < 0) return;
     if (g.direction === 'cortos' && side > 0) return;
     let opened = 0;
     for (const id of g.accountIds) {
       const a = this.acc(id);
       const plan = a && planById(a.planId);
-      if (!a || !plan || a.position || (a.status !== 'evaluacion' && a.status !== 'fondeada')) continue;
-      const qty = Math.max(1, Math.min(g.qty, plan.maxMicros));
+      const m = g.members[id];
+      if (!a || !plan || !m || !m.enabled || m.stopDay === day || a.position || (a.status !== 'evaluacion' && a.status !== 'fondeada')) continue;
+      const qty = Math.max(1, Math.min(m.qty, plan.maxMicros));
       const entry = roundTick(price + side * RULES.slippageTicks * tick);
       a.position = {
         side, qty, entry, entryT: t, groupId: g.id, strategy: g.strategy,
-        sl: roundTick(entry - side * usdToPts(g.slUsd, qty)),
-        tp: roundTick(entry + side * usdToPts(g.tpUsd, qty)),
+        sl: roundTick(entry - side * usdToPts(m.slUsd, qty)),
+        tp: roundTick(entry + side * usdToPts(m.tpUsd, qty)),
       };
       opened++;
     }

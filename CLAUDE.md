@@ -18,7 +18,7 @@ C# 7.3 para NinjaTrader 8: estrategias en `ninjatrader/Strategies` y AddOn (pane
 
 ## Juanitos Funding (`src/funding/`)
 
-Prop firm 100 % simulada dentro del panel: compra ficticia de cuentas con reglas de LucidFlex, grupos y bot sobre el precio del MNQ (Yahoo con retraso vía proxy de Vite, o mercado simulado). Mantener la etiqueta "Juanitos Funding · simulado", no usar logos ni marca de Lucid y no presentar nada como dinero o cuentas reales. Las reglas del motor tienen pruebas aisladas (ver historial); al cambiar `engine.ts`, comprobar que el saldo menos el capital coincide con la suma de las operaciones.
+Prop firm 100 % simulada dentro del panel: compra ficticia de cuentas con reglas de LucidFlex, grupos y bot sobre el precio del MNQ. Fuente por defecto: tiempo real de NinjaTrader (`CCMarketFeed` vía `/api/market`); alternativas: Yahoo con retraso vía proxy de Vite o mercado simulado. Las cuentas reales de NinjaTrader solo se muestran (PnL de NinjaTrader); el bot simulado nunca opera en ellas. Mantener la etiqueta "Juanitos Funding · simulado", no usar logos ni marca de Lucid y no presentar nada como dinero o cuentas reales. Las reglas del motor tienen pruebas aisladas (ver historial); al cambiar `engine.ts`, comprobar que el saldo menos el capital coincide con la suma de las operaciones.
 
 ## Desarrollo
 
