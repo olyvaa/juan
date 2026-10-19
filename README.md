@@ -29,6 +29,7 @@ Abre la dirección indicada por Vite. Mantén esta terminal abierta. Para usar C
 
 - `npm ci`: instalar usando el archivo de bloqueo.
 - `npm run dev`: servidor local.
+- `npm run panel`: servidor local abriendo el panel del bot.
 - `npm run build`: compilar en `dist`.
 - `npm run preview`: probar la compilación localmente.
 - `npm run lint`: ESLint; existen incidencias heredadas en archivos de la antigua tienda.
@@ -40,6 +41,25 @@ El entorno de desarrollo inicial se validó con Node 24.19.0 y npm 11.9.0.
 Sitio desplegado: https://juan-one-flax.vercel.app
 
 `vercel.json` configura Vite, `npm ci`, `npm run build` y salida `dist`. El despliegue inicial fue manual; la integración automática con GitHub no está configurada. Subir commits no garantiza un despliegue nuevo. La protección de acceso de Vercel puede exigir iniciar sesión.
+
+## Panel del bot (localhost)
+
+`panel.html` es el panel de control del bot, con estilo Apple, tema claro/oscuro y versión para móvil.
+Tiene cinco secciones: Resumen, Estrategias, Copiador, Cuentas y Resultados.
+
+```bat
+npm ci
+npm run panel
+```
+
+Se abre en `http://localhost:5173/panel.html`. Si NinjaTrader está abierto con el AddOn `CCCommandCenter`, el panel se
+conecta solo a `http://localhost:8793` y muestra datos reales: estrategias activas, pausar, reanudar, cerrar,
+kill switch, copiador y cuentas. Si no, muestra **datos de ejemplo** con la etiqueta *Modo demo*, y los botones no envían nada.
+
+- `src/panel/Panel.tsx`: vistas y lógica del panel.
+- `src/panel/api.ts`: conexión con el puente y datos de demo.
+- `src/panel/catalog.ts`: ficha y resultados de cada estrategia.
+- `src/panel/panel.css`: estilos.
 
 ## NinjaTrader 8 (código real)
 

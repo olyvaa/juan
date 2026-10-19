@@ -55,6 +55,8 @@ namespace NinjaTrader.NinjaScript.AddOns
 			};
 			newMenu.Items.Add(menuItem);
 			menuItem.Click += OnMenuItemClick;
+
+			CCBridge.Start();   // panel web en http://localhost:8793
 		}
 
 		protected override void OnWindowDestroyed(Window window)
@@ -65,6 +67,8 @@ namespace NinjaTrader.NinjaScript.AddOns
 					newMenu.Items.Remove(menuItem);
 				menuItem.Click -= OnMenuItemClick;
 				menuItem = null;
+				CCBridge.Stop();
+				CCCopier.Shared.Stop();
 			}
 		}
 
@@ -94,6 +98,12 @@ namespace NinjaTrader.NinjaScript.AddOns
 	{
 		public const string OrderName = "CCCopy";
 
+		/// Copiador unico de NinjaTrader: lo comparten la ventana y el panel web.
+		public static readonly CCCopier Shared = new CCCopier();
+
+		private readonly List<string> recent = new List<string>();
+		public List<string> RecentLog() { lock (recent) return recent.ToList(); }
+
 		public string MasterName { get; private set; }
 		public bool   Running    { get; private set; }
 		public List<CCFollower> Followers = new List<CCFollower>();
@@ -118,13 +128,24 @@ namespace NinjaTrader.NinjaScript.AddOns
 
 		private void Write(string msg)
 		{
+			string line = string.Format("{0:HH:mm:ss}  {1}", DateTime.Now, msg);
+			lock (recent)
+			{
+				recent.Insert(0, line);
+				if (recent.Count > 200) recent.RemoveAt(recent.Count - 1);
+			}
 			Action<string> l = Log;
-			if (l != null) l(string.Format("{0:HH:mm:ss}  {1}", DateTime.Now, msg));
+			if (l != null) l(line);
 		}
 
 		public void Start(string masterName, List<CCFollower> followers)
 		{
-			if (Running) Stop();
+			lock (sync) StartLocked(masterName, followers);
+		}
+
+		private void StartLocked(string masterName, List<CCFollower> followers)
+		{
+			if (Running) StopLocked();
 			master = FindAccount(masterName);
 			if (master == null) throw new InvalidOperationException("No existe la cuenta maestra " + masterName);
 			MasterName = masterName;
@@ -139,6 +160,11 @@ namespace NinjaTrader.NinjaScript.AddOns
 		}
 
 		public void Stop()
+		{
+			lock (sync) StopLocked();
+		}
+
+		private void StopLocked()
 		{
 			if (master != null) master.ExecutionUpdate -= OnMasterExecution;
 			if (Running) Write("Copiador DETENIDO. Las posiciones abiertas en las seguidoras NO se cierran solas.");
@@ -314,12 +340,14 @@ namespace NinjaTrader.NinjaScript.AddOns
 	// ========================================================================
 	public class CCCommandWindow : NTWindow
 	{
-		private readonly CCCopier copier = new CCCopier();
+		private readonly CCCopier copier = CCCopier.Shared;
+		private readonly Action<string> logHandler;
 		private readonly DispatcherTimer timer;
 
 		// Estrategias
 		private Grid      stratGrid;
 		private TextBlock stratEmpty;
+		private TextBlock bridgeStatus;
 		private string    stratKey = "";
 		private readonly Dictionary<string, TextBlock[]> stratCells = new Dictionary<string, TextBlock[]>();
 		private readonly Dictionary<string, Button> pauseButtons = new Dictionary<string, Button>();
@@ -343,7 +371,10 @@ namespace NinjaTrader.NinjaScript.AddOns
 			tabs.Items.Add(new TabItem { Header = "Copiador",    Content = BuildCopierTab() });
 			Content = tabs;
 
-			copier.Log += msg => Dispatcher.InvokeAsync(() => AddLog(msg));
+			logHandler = msg => Dispatcher.InvokeAsync(() => AddLog(msg));
+			copier.Log += logHandler;
+			foreach (string line in Enumerable.Reverse(copier.RecentLog())) AddLog(line);
+			if (copier.Running) SetEditable(false);
 
 			timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 			timer.Tick += (s, e) => RefreshStrategies();
@@ -352,7 +383,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 			Closed += (s, e) =>
 			{
 				timer.Stop();
-				copier.Stop();   // por seguridad: cerrar la ventana detiene el copiador
+				copier.Log -= logHandler;   // el copiador sigue activo; se controla tambien desde el panel web
 			};
 		}
 
@@ -387,6 +418,8 @@ namespace NinjaTrader.NinjaScript.AddOns
 					if (copier.Running) copier.FlattenFollowers();
 				}
 			}, Brushes.DarkRed));
+			bridgeStatus = Text("", true);
+			top.Children.Add(bridgeStatus);
 			DockPanel.SetDock(top, Dock.Top);
 			root.Children.Add(top);
 
@@ -480,6 +513,11 @@ namespace NinjaTrader.NinjaScript.AddOns
 				c[6].Foreground = h.Paused ? Brushes.Orange : Brushes.MediumSeaGreen;
 				pauseButtons[h.Id].Content = h.Paused ? "Reanudar" : "Pausar";
 			}
+
+			if (bridgeStatus != null)
+				bridgeStatus.Text = CCBridge.Running
+					? "Panel web: http://localhost:" + CCBridge.Port + " activo"
+					: "Panel web: no disponible" + (CCBridge.LastError != null ? " (" + CCBridge.LastError + ")" : "");
 
 			if (copierStatus != null)
 				copierStatus.Text = copier.Running

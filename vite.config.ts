@@ -7,4 +7,13 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  build: {
+    rollupOptions: {
+      // Dos páginas: Tandem (index.html) y el panel del bot (panel.html)
+      input: {
+        main: 'index.html',
+        panel: 'panel.html',
+      },
+    },
+  },
 });

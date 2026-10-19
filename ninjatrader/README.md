@@ -18,6 +18,7 @@ que sigue siendo una demo sin conexión.
 | `Strategies/CCJetF1Lab.cs` | Laboratorio de JetF1: prueba 3.600 combinaciones en un backtest (**no opera**) |
 | `AddOns/CCHub.cs` | Registro compartido entre las estrategias y el panel |
 | `AddOns/CCCommandCenter.cs` | Ventana **Command Pro Clone**: pestañas *Estrategias* y *Copiador* |
+| `AddOns/CCBridge.cs` | Puente local `http://localhost:8793` para el panel web (`npm run panel`) |
 
 ## Instalación
 
@@ -56,7 +57,7 @@ a mercado por la diferencia. Así copia entradas, cierres parciales, salidas por
 - **Cerrar posiciones copiadas en seguidoras:** cierra a mercado lo que se ha copiado en esta sesión.
 - La configuración se guarda en `Documents\NinjaTrader 8\CCCopier.txt`.
 - Antes de arrancar pide confirmación y avisa de las cuentas que **no** son Sim.
-- **Cerrar la ventana detiene el copiador.** Las posiciones ya abiertas no se cierran solas.
+- El copiador es el mismo desde la ventana de NinjaTrader y desde el panel web. **Cerrar la ventana no lo detiene**; se detiene con su botón o al cerrar NinjaTrader. Al detenerlo, las posiciones abiertas no se cierran solas.
 
 **Limitaciones importantes:**
 
@@ -64,6 +65,13 @@ a mercado por la diferencia. Así copia entradas, cierres parciales, salidas por
   se cuelga o pierde la conexión, **las seguidoras quedan sin stop propio**.
 - **No pongas la misma estrategia en la maestra y en las seguidoras**: se duplicarían las órdenes.
 - Las órdenes a mercado pueden tener deslizamiento distinto en cada cuenta.
+
+## Panel web
+
+Con NinjaTrader abierto y el AddOn instalado, el puente `CCBridge` escucha en `http://localhost:8793`, **solo en este ordenador**.
+El panel (`npm run panel` en la raíz del repo) se conecta solo. Por seguridad, solo acepta peticiones desde `localhost`, y las acciones
+exigen la cabecera `X-CC-Panel`, así que otra página web abierta en el navegador no puede enviar órdenes. La pestaña *Estrategias*
+de la ventana de NinjaTrader indica si el panel web está activo.
 
 ## Estrategia guardada: GoatPro (validada)
 
@@ -101,4 +109,5 @@ enero–junio y en julio–octubre. **No se recomienda operarla en real** con es
 
 - Todo el código compila contra una imitación de la API de NinjaTrader y de WPF (C# 7.3). La compilación real con F5 en NinjaTrader está pendiente de confirmar.
 - La lógica del copiador se probó con cuentas simuladas que ejecutan al instante: entradas, parciales, giros, mínimo 1, multiplicadores, modo inverso y detener.
-- El panel y el copiador **no** se han probado todavía dentro de NinjaTrader.
+- El puente se ejecutó con cuentas y estrategias simuladas y se probó con el panel en Chromium: estado, pausar/reanudar, cerrar, kill switch, iniciar y detener el copiador, y el rechazo de peticiones sin cabecera o desde otros orígenes.
+- El panel, el copiador y el puente **no** se han probado todavía dentro de NinjaTrader.

@@ -14,7 +14,7 @@ Los grupos se identifican por ID; dos grupos pueden tener los mismos miembros. N
 
 ## Código NinjaTrader (`ninjatrader/`)
 
-C# 7.3 para NinjaTrader 8: estrategias en `ninjatrader/Strategies` y AddOn (panel + copiador) en `ninjatrader/AddOns`. No se puede compilar aquí contra NinjaTrader real; se verifica contra una imitación de la API y el usuario compila con F5. No declarar que funciona en NinjaTrader sin su confirmación. El copiador copia la posición neta con órdenes a mercado y no copia stops pendientes: mantener esa advertencia. La web (`src/`) sigue siendo demo y no está conectada a este código.
+C# 7.3 para NinjaTrader 8: estrategias en `ninjatrader/Strategies` y AddOn (panel + copiador) en `ninjatrader/AddOns`. No se puede compilar aquí contra NinjaTrader real; se verifica contra una imitación de la API y el usuario compila con F5. No declarar que funciona en NinjaTrader sin su confirmación. El copiador copia la posición neta con órdenes a mercado y no copia stops pendientes: mantener esa advertencia. Tandem (`index.html`, `src/App.tsx`…) sigue siendo demo. El panel del bot (`panel.html`, `src/panel/`) sí se conecta al AddOn mediante el puente `CCBridge` en `http://localhost:8793` (solo localhost, cabecera `X-CC-Panel` obligatoria en los POST). Sin puente, el panel muestra datos de ejemplo con la etiqueta de modo demo y no envía nada: mantener ese comportamiento. La cuenta maestra por defecto del copiador debe ser simulada.
 
 ## Desarrollo
 
