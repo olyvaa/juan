@@ -581,6 +581,26 @@ function TradingViewQuote({ symbol }: { symbol: string }) {
   return <div className="tradingview-widget-container tv-quote" ref={box} />;
 }
 
+function NtConnectionSetting({ e }: { e: Engine }) {
+  const [name, setName] = useState(e.state.ntConnection);
+  const live = e.market.ntConnections.filter(c => c.price === 'Connected').map(c => c.name);
+  const ok = !!e.state.ntConnection && live.some(n => n.toLowerCase() === e.state.ntConnection.toLowerCase());
+  return (
+    <Section
+      title="Conexión de datos de NinjaTrader"
+      footer="El bot solo acepta el precio cuando esta conexión (tu cuenta de Lucid) está conectada en NinjaTrader y no hay otras conexiones de datos. Así nunca opera con precios del Simulated Data Feed ni de otra cuenta."
+    >
+      <div className="row add-real">
+        <label className="field grow"><span>Leer el precio solo de</span>
+          <input className="input" value={name} onChange={ev => setName(ev.target.value)} placeholder="LTTK7X97T4U" />
+        </label>
+        <button type="button" className="btn primary" disabled={name.trim() === e.state.ntConnection} onClick={() => e.setNtConnection(name)}>Guardar</button>
+        {ok ? <StatusPill kind="good">Conectada</StatusPill> : <StatusPill kind="bad">No conectada</StatusPill>}
+      </div>
+    </Section>
+  );
+}
+
 export function Mercado() {
   const e = useEngine();
   const m = e.market;
@@ -623,6 +643,8 @@ export function Mercado() {
       >
         <TradingViewQuote symbol="CME_MINI:MNQ1!" />
       </Section>
+
+      {e.state.source === 'nt' && <NtConnectionSetting e={e} />}
 
       <Section title="Fuente de precio del bot" footer={source.note}>
         <div className="row">

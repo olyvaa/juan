@@ -55,6 +55,7 @@ type State = {
   version: 1; seq: number; spent: number; source: SourceId; processedT: number;
   accounts: Account[]; groups: Group[]; log: string[];
   real: Record<string, RealTrack>;
+  ntConnection: string;   // única conexión de NinjaTrader de la que se acepta el precio
 };
 
 const KEY = 'jf-state-v1';
@@ -63,7 +64,7 @@ const roundTick = (p: number) => Math.round(p / tick) * tick;
 const usdToPts = (usd: number, qty: number) => Math.max(tick, roundTick(usd / (qty * MNQ.pointValue)));
 
 function emptyState(): State {
-  return { version: 1, seq: 0, spent: 0, source: 'nt', processedT: 0, accounts: [], groups: [], log: [], real: {} };
+  return { version: 1, seq: 0, spent: 0, source: 'nt', processedT: 0, accounts: [], groups: [], log: [], real: {}, ntConnection: 'LTTK7X97T4U' };
 }
 
 function loadState(): State {
@@ -72,6 +73,7 @@ function loadState(): State {
     if (s && s.version === 1 && Array.isArray(s.accounts) && Array.isArray(s.groups)) {
       // Datos guardados por versiones anteriores del panel
       s.real = s.real || {};
+      if (typeof s.ntConnection !== 'string') s.ntConnection = 'LTTK7X97T4U';
       for (const g of s.groups) {
         g.members = g.members || {};
         g.batch = g.batch || 0;
@@ -94,8 +96,16 @@ export class Engine {
 
   constructor() {
     this.market = new Market(this.state.source);
+    this.market.requiredConnection = this.state.ntConnection;
     this.market.subscribe(() => this.process());
     this.market.start();
+  }
+
+  setNtConnection(name: string) {
+    this.state.ntConnection = name.trim();
+    this.market.requiredConnection = this.state.ntConnection;
+    this.log(`Precio aceptado solo de la conexión de NinjaTrader: ${this.state.ntConnection || '(cualquiera)'}`);
+    this.changed();
   }
 
   // -------------------------------------------------------------- suscripción (React)
@@ -257,6 +267,7 @@ export class Engine {
     this.state.processedT = 0;
     this.market.stop();
     this.market = new Market(source);
+    this.market.requiredConnection = this.state.ntConnection;
     this.market.subscribe(() => this.process());
     this.freshStart = true;
     this.market.start();
@@ -312,7 +323,7 @@ export class Engine {
 
   /** Borra todo Juanitos Funding: cuentas, grupos, gasto e historial (las cuentas reales seguidas se mantienen). */
   wipeAll() {
-    const keep = { real: this.state.real, source: this.state.source };
+    const keep = { real: this.state.real, source: this.state.source, ntConnection: this.state.ntConnection };
     this.state = { ...emptyState(), ...keep, processedT: this.state.processedT };
     this.changed();
   }

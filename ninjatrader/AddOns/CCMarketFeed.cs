@@ -28,16 +28,22 @@ namespace NinjaTrader.NinjaScript.AddOns
 		private static string error;
 		private static bool loaded;
 		private static DateTime lastUpdate;
+		private static string connSig = "";
+		private static int generation;        // cambia en cada descarga nueva: el panel descarta las velas antiguas   // conexiones de datos activas cuando se pidieron las velas
 
 		/// Arranca (o cambia) la descarga de velas del instrumento.
 		public static void Ensure(string name)
 		{
 			if (string.IsNullOrWhiteSpace(name)) name = DefaultInstrument;
+			string sig = ConnectionSignature();
 			lock (sync)
 			{
-				if (request != null && name == instrumentName && error == null) return;
+				// Si cambia la conexion (p. ej. de Simulated Data Feed a la cuenta real) se vuelven a pedir las velas
+				if (request != null && name == instrumentName && error == null && sig == connSig) return;
+				connSig = sig;
 				Stop();
 				instrumentName = name;
+				generation++;
 				error = null;
 				loaded = false;
 				bars.Clear();
@@ -53,6 +59,18 @@ namespace NinjaTrader.NinjaScript.AddOns
 				}
 				catch (Exception ex) { error = ex.Message; request = null; }
 			}
+		}
+
+		/// Nombres de las conexiones con datos conectados, p. ej. "LTTK7X97T4U".
+		private static string ConnectionSignature()
+		{
+			try
+			{
+				List<Connection> conns;
+				lock (Connection.Connections) conns = Connection.Connections.ToList();
+				return string.Join("|", conns.Where(c => c.PriceStatus == ConnectionStatus.Connected).Select(c => c.Options.Name).OrderBy(n => n));
+			}
+			catch { return ""; }
 		}
 
 		public static void Stop()
@@ -111,6 +129,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 			{
 				StringBuilder sb = new StringBuilder();
 				sb.Append("{\"instrument\":").Append(Json.Str(instrumentName))
+				  .Append(",\"gen\":").Append(generation)
 				  .Append(",\"loaded\":").Append(loaded ? "true" : "false")
 				  .Append(",\"error\":").Append(Json.Str(error))
 				  .Append(",\"updated\":").Append(Json.Str(lastUpdate == DateTime.MinValue ? "" : lastUpdate.ToString("s")));

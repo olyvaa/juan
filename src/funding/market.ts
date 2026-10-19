@@ -73,6 +73,9 @@ export class Market {
   /** false = el precio de NinjaTrader no es fiable: el bot no abre operaciones. */
   trusted = true;
   private refAsked = 0;
+  private ntGen = -1;
+  /** Única conexión de NinjaTrader de la que se acepta el precio (p. ej. la cuenta de Lucid). */
+  requiredConnection = '';
   last = 0;                  // último precio (incluye la vela en formación)
   status: MarketStatus;
   private listeners = new Set<Listener>();
@@ -134,19 +137,32 @@ export class Market {
     if (this.ntBusy) return;
     this.ntBusy = true;
     try {
-      const since = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
+      const since = this.ntGen >= 0 && this.bars.length ? this.bars[this.bars.length - 1].t : 0;
       const res = await fetch(`${BRIDGE_URL}/api/market?instrument=${encodeURIComponent(NT_INSTRUMENT)}&since=${since}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { loaded: boolean; error: string | null; last: number; bars: number[][]; connections?: NtConnection[] };
+      const d = await res.json() as { gen?: number; loaded: boolean; error: string | null; last: number; bars: number[][]; connections?: NtConnection[] };
       if (gen !== this.generation) return;
+      // NinjaTrader ha vuelto a descargar las velas (p. ej. al cambiar de conexión): se descartan las antiguas
+      if (typeof d.gen === 'number' && d.gen !== this.ntGen) {
+        const fresh = this.ntGen >= 0 || since > 0;
+        this.ntGen = d.gen;
+        if (fresh) { this.bars = []; this.last = 0; return; }   // la siguiente consulta trae todo el historial nuevo
+      }
       this.ntConnections = d.connections || [];
       const live = this.ntConnections.filter(c => c.price === 'Connected');
       const simulated = live.filter(c => /simulat|playback|replay/i.test(c.name));
+      const req = this.requiredConnection.trim();
+      const reqLive = !req || live.some(c => c.name.toLowerCase() === req.toLowerCase());
+      const others = live.filter(c => c.name.toLowerCase() !== req.toLowerCase());
       const warning = live.length === 0
         ? 'NinjaTrader no tiene ninguna conexión de datos activa: el precio puede estar parado o ser antiguo.'
-        : simulated.length === live.length
-          ? `NinjaTrader está conectado a "${simulated.map(c => c.name).join(', ')}": esos precios son INVENTADOS por NinjaTrader, no el MNQ real. Conecta tu cuenta del bróker (Lucid / Rithmic / Tradovate…).`
-          : undefined;
+        : !reqLive
+          ? `El precio solo se acepta de la conexión "${req}", y en NinjaTrader no está conectada (ahora: ${live.map(c => c.name).join(', ')}).`
+          : req && others.length
+            ? `Además de "${req}" hay otras conexiones de datos (${others.map(c => c.name).join(', ')}): NinjaTrader podría sacar el precio de ellas. Desconéctalas.`
+            : simulated.length === live.length
+              ? `NinjaTrader está conectado a "${simulated.map(c => c.name).join(', ')}": esos precios son INVENTADOS por NinjaTrader, no el MNQ real.`
+              : undefined;
       if (d.error) { this.trusted = false; this.setStatus(false, d.error); return; }
       if (!d.loaded) { this.setStatus(false, 'Cargando datos de NinjaTrader…'); return; }
       const lastT = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
