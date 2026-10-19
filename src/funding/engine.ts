@@ -55,6 +55,7 @@ export type Group = {
   members: Record<string, Member>;
   tf: number;         // minutos por vela de la estrategia (JetF1 siempre 1)
   schedule: Schedule; // horario de operación (o sin horario)
+  lastCheck?: { t: number; text: string };   // qué vio el bot en la última vela cerrada y qué hizo
   batch: number;      // 0 = todas las cuentas a la vez; N = solo N a la vez (en orden): cuando una supera o se quema, entra la siguiente
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
@@ -267,6 +268,18 @@ export class Engine {
     this.changed();
   }
 
+  /** Operación de PRUEBA: compra o vende ahora a mercado en las cuentas activas del grupo, con su TP/SL. */
+  testTrade(groupId: string, side: 1 | -1): string {
+    const g = this.group(groupId);
+    if (!g) return 'El grupo no existe.';
+    if (!this.market.last || this.market.bars.length === 0) return 'Todavía no hay precio de mercado.';
+    const t = this.market.bars[this.market.bars.length - 1].t + 60;
+    const res = this.openGroup(g, side, this.market.last, t, tradingDay(t));
+    this.log(`${g.name}: operación de PRUEBA (${side > 0 ? 'compra' : 'venta'}) → ${res}`, t);
+    this.changed();
+    return `Prueba de ${side > 0 ? 'compra' : 'venta'}: ${res}`;
+  }
+
   closeAccount(id: string) {
     const a = this.acc(id);
     if (a?.position) { this.close(a, this.market.last, this.nowT(), 'Cierre manual'); this.changed(); }
@@ -427,6 +440,13 @@ export class Engine {
       for (const a of this.state.accounts) if (a.position) this.close(a, b.c, b.t + 60, 'Cierre de sesión');
 
     // 4. Señales
+    // Grupos activos fuera de su horario: se anota en "última vela revisada"
+    for (const g of this.state.groups) {
+      const tf = g.strategy === 'jetf1' ? 1 : (g.tf || 5);
+      if (g.running && b.t > g.startedAt && (b.t + 60) % (tf * 60) === 0 && !inSchedule(g.schedule, closeMin))
+        g.lastCheck = { t: b.t + 60, text: 'Fuera de horario' };
+    }
+
     // Solo grupos activos y dentro de su horario (se mira la hora de cierre de la vela)
     const running = this.state.groups.filter(g => g.running && b.t > g.startedAt && inSchedule(g.schedule, closeMin));
     if (running.length === 0) return;
@@ -445,16 +465,21 @@ export class Engine {
         byTf.set(tf, barsTf);
       }
       const bt = barsTf[barsTf.length - 1];
-      if (bt.t <= g.startedAt) continue;
-      if (g.lastExitT && bt.t < g.lastExitT) continue;       // 1 vela de espera tras cerrar
+      const check = (text: string) => { g.lastCheck = { t: b.t + 60, text }; };
+      const candle = `vela ${bt.c > bt.o ? 'verde' : bt.c < bt.o ? 'roja' : 'doji'} (${bt.o} → ${bt.c})`;
+      if (bt.t <= g.startedAt) { check(`Primera vela incompleta tras activar: ${candle}, no cuenta`); continue; }
+      if (g.lastExitT && bt.t < g.lastExitT) { check(`Espera de 1 vela tras cerrar una operación: ${candle}`); continue; }
       let sig: 1 | -1 | 0 = 0;
       if (g.strategy === 'goatpro') sig = goatProSignal(barsTf, tf);
       else if (g.strategy === 'gyr') sig = gyrSignal(bt);
-      else if (g.strategy === 'rangopenny' && g.lastNyorDay !== day) {
+      else if (g.strategy === 'rangopenny') {
+        if (g.lastNyorDay === day) { check('RangOpenNY ya operó hoy'); continue; }
         sig = rangOpenSignal(barsTf, tf);
         if (sig) g.lastNyorDay = day;
       }
-      if (sig) this.openGroup(g, sig, b.c, b.t + 60, day);
+      if (!sig) { check(`${candle}: sin señal${g.strategy === 'gyr' ? ' (doji)' : ''}`); continue; }
+      const res = this.openGroup(g, sig, b.c, b.t + 60, day);
+      check(`${candle}: señal de ${sig > 0 ? 'COMPRA' : 'VENTA'} → ${res}`);
     }
   }
 
@@ -489,20 +514,23 @@ export class Engine {
 
   private blockedLogged = false;
 
-  private openGroup(g: Group, side: 1 | -1, price: number, t: number, day: string) {
+  /** Abre la señal en las cuentas del grupo que pueden operar. Devuelve qué ha pasado (para "última vela revisada"). */
+  private openGroup(g: Group, side: 1 | -1, price: number, t: number, day: string): string {
     // Protección: con precios no fiables de NinjaTrader (Simulated Data Feed, sin conexión o lejos del real) no se entra.
     if (this.state.source === 'nt' && !this.market.trusted) {
       if (!this.blockedLogged) { this.log(`${g.name}: señal IGNORADA, el precio de NinjaTrader no es fiable (${this.market.status.warning || this.market.status.message})`, t); this.blockedLogged = true; }
-      return;
+      return 'ignorada: precio de NinjaTrader no fiable';
     }
     this.blockedLogged = false;
-    if (g.direction === 'largos' && side < 0) return;
-    if (g.direction === 'cortos' && side > 0) return;
-    let opened = 0;
+    if (g.direction === 'largos' && side < 0) return 'ignorada: el grupo es solo largos';
+    if (g.direction === 'cortos' && side > 0) return 'ignorada: el grupo es solo cortos';
+    let opened = 0, busy = 0, stopped = 0;
     for (const id of this.activeMembers(g)) {
       const a = this.acc(id);
       const plan = a && planById(a.planId);
       const m = g.members[id];
+      if (a?.position) busy++;
+      if (m && m.stopDay === day) stopped++;
       if (!a || !plan || !m || !m.enabled || m.stopDay === day || a.position || (a.status !== 'evaluacion' && a.status !== 'fondeada')) continue;
       const qty = Math.max(1, Math.min(m.qty, plan.maxMicros));
       const entry = roundTick(price + side * RULES.slippageTicks * tick);
@@ -514,6 +542,10 @@ export class Engine {
       opened++;
     }
     if (opened) this.log(`${g.name}: ${side > 0 ? 'COMPRA' : 'VENTA'} en ${opened} cuenta(s) @ ${roundTick(price)}`, t);
+    if (opened) return `abierta en ${opened} cuenta(s)`;
+    if (busy) return 'no abre: la cuenta activa ya tiene una posición abierta';
+    if (stopped) return 'no abre: cuenta parada hoy por PDLL/PDPT';
+    return 'no abre: ninguna cuenta disponible (OPS apagado, superada o quemada)';
   }
 
   private close(a: Account, price: number, t: number, reason: string) {

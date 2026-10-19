@@ -446,6 +446,15 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
   const bars = e.market.bars;
   const today = tradingDay(bars.length ? bars[bars.length - 1].t + 60 : Math.floor(Date.now() / 1000));
   const launch = () => { const err = e.launchGroup(g.id); notify(err || `"${g.name}" operando con ${STRATEGY_INFO[g.strategy].name}`, !!err); };
+  const tfSec = (g.strategy === 'jetf1' ? 1 : g.tf || 5) * 60;
+  const lastClose = bars.length ? bars[bars.length - 1].t + 60 : 0;
+  const nextClose = lastClose ? lastClose - (lastClose % tfSec) + tfSec : 0;
+  const test = (side: 1 | -1) => ask({
+    title: `Operación de prueba: ${side > 0 ? 'compra' : 'venta'}`,
+    message: <>Abre ahora una {side > 0 ? 'compra' : 'venta'} a mercado (precio actual) en las cuentas activas de <b>{g.name}</b>, con el CT, TP y SL de cada cuenta. Es simulada: no envía nada a NinjaTrader.</>,
+    action: side > 0 ? 'Comprar' : 'Vender',
+    onConfirm: () => { const r = e.testTrade(g.id, side); notify(r, r.includes('no abre') || r.includes('ignorada') || r.includes('no hay')); },
+  });
   const info = STRATEGY_INFO[g.strategy];
   const active = e.activeMembers(g);
   const waiting = g.batch > 0 ? g.accountIds.filter(id => !active.includes(id) && g.members[id]?.enabled && (e.acc(id)?.status === 'evaluacion' || e.acc(id)?.status === 'fondeada')) : [];
@@ -467,6 +476,10 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
           <span>{g.accountIds.length} ctas</span>
           <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
         </div>
+        <div className="monitor-check">
+          <span><b>Última vela revisada:</b> {g.lastCheck ? `${fmtNy(g.lastCheck.t).slice(6)} NY · ${g.lastCheck.text}` : g.running ? 'esperando el cierre de la primera vela…' : 'el grupo no está activo'}</span>
+          {g.running && nextClose > 0 && <span className="muted">Próxima vela: {fmtNy(nextClose).slice(6)} NY</span>}
+        </div>
         <div className="actions tight">
           {g.running
             ? <>
@@ -475,6 +488,8 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
             </>
             : <button type="button" className="btn primary" onClick={launch}><Play size={16} /> Activar</button>}
           <button type="button" className="btn" disabled={g.running} title={g.running ? 'Detén el grupo para editarlo' : undefined} onClick={() => setEditing(!editing)}><Pencil size={15} /> Editar</button>
+          <button type="button" className="btn" onClick={() => test(1)}>Probar compra</button>
+          <button type="button" className="btn" onClick={() => test(-1)}>Probar venta</button>
           <button type="button" className="btn danger-ghost" disabled={g.running}
             onClick={() => ask({ title: `Eliminar "${g.name}"`, message: 'Se borra el grupo. Las cuentas no se tocan.', action: 'Eliminar', destructive: true, onConfirm: () => e.deleteGroup(g.id) })}
           ><Trash2 size={15} /> Eliminar</button>
