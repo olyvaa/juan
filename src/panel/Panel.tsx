@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Copy, Gauge, Layers, Minus, XOctagon,
-  Pause, Play, Plus, RefreshCw, Wallet, XCircle, Info,
+  Activity, AlertTriangle, BarChart3, ChevronRight, Copy, Gauge, Layers, Minus, XOctagon,
+  Pause, Play, Plus, RefreshCw, Wallet, Info,
 } from 'lucide-react';
 import {
   BRIDGE_URL, demoApply, demoState, fetchState, sendCommand,
   type AccountInfo, type BridgeState, type Follower, type StrategyRun,
 } from './api';
 import { CATALOG, GOATPRO_RESULTS, VERDICT_LABEL, type StrategyInfo } from './catalog';
+import { ConfirmSheet, Section, StatusPill, Tile, Toggle, type Confirm } from './ui';
+import { signedUsd, tone, usd } from './format';
+import { getEngine } from '../funding/engine';
+import { Grupos, JfBadge, Mercado, MisCuentas, Tienda } from '../funding/FundingViews';
+import { CandlestickChart, ShoppingBag, Users, WalletCards } from 'lucide-react';
 
-type View = 'resumen' | 'estrategias' | 'copiador' | 'cuentas' | 'resultados';
+type View = 'jf-tienda' | 'jf-cuentas' | 'jf-grupos' | 'jf-mercado' | 'resumen' | 'estrategias' | 'copiador' | 'cuentas' | 'resultados';
 type Theme = 'auto' | 'light' | 'dark';
-type Confirm = { title: string; message: ReactNode; action: string; destructive?: boolean; onConfirm: () => void };
+
+const JF_NAV: { id: View; label: string; icon: ReactNode }[] = [
+  { id: 'jf-tienda', label: 'Tienda', icon: <ShoppingBag size={18} /> },
+  { id: 'jf-cuentas', label: 'Mis cuentas', icon: <WalletCards size={18} /> },
+  { id: 'jf-grupos', label: 'Grupos', icon: <Users size={18} /> },
+  { id: 'jf-mercado', label: 'Mercado', icon: <CandlestickChart size={18} /> },
+];
 
 const NAV: { id: View; label: string; icon: ReactNode }[] = [
   { id: 'resumen', label: 'Resumen', icon: <Gauge size={18} /> },
@@ -22,11 +33,7 @@ const NAV: { id: View; label: string; icon: ReactNode }[] = [
   { id: 'resultados', label: 'Resultados', icon: <BarChart3 size={18} /> },
 ];
 
-// Formato español con separador de miles siempre (es-ES no agrupa los números de 4 cifras).
-const amount = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const usd = (n: number) => `${n < 0 ? '−' : ''}${amount.format(Math.abs(n))} $`;
-const signedUsd = (n: number) => (n > 0 ? '+' : '') + usd(n);
-const tone = (n: number) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
+
 
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -62,10 +69,16 @@ function useBridge() {
     }
   }, []);
 
+  // Conectado: cada 1,5 s. Sin NinjaTrader: cada 5 s (cada intento fallido deja un aviso en la consola).
   useEffect(() => {
-    void refresh();
-    const t = window.setInterval(() => void refresh(), 1500);
-    return () => window.clearInterval(t);
+    let timer = 0;
+    let alive = true;
+    const loop = async () => {
+      await refresh();
+      if (alive) timer = window.setTimeout(loop, connectedRef.current ? 1500 : 5000);
+    };
+    void loop();
+    return () => { alive = false; window.clearTimeout(timer); };
   }, [refresh]);
 
   const run = useCallback(async (path: string, body: unknown = {}): Promise<string> => {
@@ -79,66 +92,6 @@ function useBridge() {
   }, [refresh]);
 
   return { state, connected, checked, run };
-}
-
-// ------------------------------------------------------------------ piezas
-function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return (
-    <button
-      type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
-      className={`switch${on ? ' on' : ''}`} onClick={() => onChange(!on)}
-    >
-      <span className="knob" />
-    </button>
-  );
-}
-
-function StatusPill({ kind, children }: { kind: 'good' | 'warn' | 'bad' | 'neutral'; children: ReactNode }) {
-  const icon = kind === 'good' ? <CheckCircle2 size={13} /> : kind === 'bad' ? <XCircle size={13} /> : kind === 'warn' ? <AlertTriangle size={13} /> : <Info size={13} />;
-  return <span className={`pill ${kind}`}>{icon}{children}</span>;
-}
-
-function Tile({ label, value, sub, valueTone }: { label: string; value: ReactNode; sub?: ReactNode; valueTone?: string }) {
-  return (
-    <div className="tile">
-      <span className="tile-label">{label}</span>
-      <strong className={`tile-value ${valueTone || ''}`}>{value}</strong>
-      {sub && <span className="tile-sub">{sub}</span>}
-    </div>
-  );
-}
-
-function Section({ title, footer, children, action }: { title?: string; footer?: ReactNode; children: ReactNode; action?: ReactNode }) {
-  return (
-    <section className="group">
-      {(title || action) && <div className="group-head">{title && <h2>{title}</h2>}{action}</div>}
-      <div className="group-card">{children}</div>
-      {footer && <p className="group-foot">{footer}</p>}
-    </section>
-  );
-}
-
-function ConfirmSheet({ c, onClose }: { c: Confirm; onClose: () => void }) {
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
-  return (
-    <div className="sheet-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet" role="alertdialog" aria-modal="true" aria-labelledby="sheet-title">
-        <h3 id="sheet-title">{c.title}</h3>
-        <div className="sheet-body">{c.message}</div>
-        <div className="sheet-actions">
-          <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button
-            type="button" className={`btn ${c.destructive ? 'danger' : 'primary'}`} autoFocus
-            onClick={() => { c.onConfirm(); onClose(); }}
-          >{c.action}</button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------ vistas
@@ -467,7 +420,7 @@ type ViewProps = {
 // ------------------------------------------------------------------ app
 export default function Panel() {
   const { state, connected, checked, run } = useBridge();
-  const [view, setView] = useState<View>(() => readLocal<View>('cc-panel-view', 'resumen'));
+  const [view, setView] = useState<View>(() => readLocal<View>('cc-panel-view', 'jf-tienda'));
   const [theme, setTheme] = useState<Theme>(() => readLocal<Theme>('cc-panel-theme', 'auto'));
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
@@ -490,14 +443,26 @@ export default function Panel() {
       .catch((e: unknown) => setToast({ text: e instanceof Error ? e.message : 'Error', error: true }));
   }, [run]);
 
+  useEffect(() => { getEngine(); }, []);   // el simulador de Juanitos Funding arranca con el panel
+
   const props: ViewProps = { state, connected, ask: setConfirm, act };
-  const title = useMemo(() => NAV.find(n => n.id === view)?.label ?? '', [view]);
+  const notify = useCallback((text: string, error?: boolean) => setToast({ text, error }), []);
+  const jf = view.startsWith('jf-');
+  const title = useMemo(() => [...JF_NAV, ...NAV].find(n => n.id === view)?.label ?? '', [view]);
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">◆</span> Command</div>
         <nav className="nav" aria-label="Secciones">
+          <span className="nav-head">Juanitos Funding</span>
+          {JF_NAV.map(n => (
+            <button
+              key={n.id} type="button" className={`nav-item${view === n.id ? ' active' : ''}`}
+              aria-current={view === n.id ? 'page' : undefined} onClick={() => setView(n.id)}
+            >{n.icon}<span>{n.label}</span></button>
+          ))}
+          <span className="nav-head">NinjaTrader</span>
           {NAV.map(n => (
             <button
               key={n.id} type="button" className={`nav-item${view === n.id ? ' active' : ''}`}
@@ -519,12 +484,12 @@ export default function Panel() {
       <main className="content">
         <header className="topbar">
           <h1>{title}</h1>
-          {checked && (connected
+          {jf ? <JfBadge /> : checked && (connected
             ? <StatusPill kind="good">NinjaTrader conectado</StatusPill>
             : <StatusPill kind="warn">Modo demo · sin conexión</StatusPill>)}
         </header>
 
-        {checked && !connected && (
+        {!jf && checked && !connected && (
           <div className="callout demo">
             <Info size={18} />
             <div>
@@ -534,6 +499,10 @@ export default function Panel() {
           </div>
         )}
 
+        {view === 'jf-tienda' && <Tienda ask={setConfirm} notify={notify} />}
+        {view === 'jf-cuentas' && <MisCuentas ask={setConfirm} notify={notify} />}
+        {view === 'jf-grupos' && <Grupos ask={setConfirm} notify={notify} />}
+        {view === 'jf-mercado' && <Mercado />}
         {view === 'resumen' && <Resumen {...props} go={setView} />}
         {view === 'estrategias' && <Estrategias {...props} />}
         {view === 'copiador' && <Copiador {...props} />}

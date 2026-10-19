@@ -284,6 +284,84 @@ button:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srg
 .table th { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .table tbody tr { border-top: 1px solid var(--line); }
 
+
+/* ------------------------------------------------------------ Juanitos Funding */
+.nav-head { padding: 14px 10px 4px; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-head:first-child { padding-top: 0; }
+
+.jf-badge { padding: 3px 10px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-size: 12px; font-weight: 600; }
+
+.jf-hero {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 26px; margin-bottom: 24px; border-radius: 22px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface));
+  box-shadow: var(--shadow);
+}
+.jf-hero h2 { margin: 8px 0 4px; font-size: 28px; letter-spacing: -0.025em; }
+.jf-hero p { margin: 0; max-width: 460px; color: var(--ink-2); }
+.jf-logo { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 800; letter-spacing: -0.04em; }
+.jf-hero-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+.jf-hero-stats .tile { min-width: 160px; background: var(--surface-2); box-shadow: none; }
+
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-bottom: 10px; }
+.plan { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.plan h3 { margin: 2px 0 0; font-size: 24px; letter-spacing: -0.02em; }
+.plan-kicker { font-size: 12px; font-weight: 600; color: var(--accent-ink); }
+.plan-price { margin: 4px 0 0; font-size: 20px; font-weight: 700; }
+.plan-price small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.plan-rules { display: grid; gap: 8px; margin: 0; font-size: 13px; }
+.plan-rules div { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.plan-rules dt { color: var(--ink-2); }
+.plan-rules dd { margin: 0; text-align: right; font-weight: 600; }
+.plan-rules small { display: block; font-weight: 400; color: var(--ink-3); }
+.plan-buy { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: auto; }
+.plan-buy .btn { flex: 1 1 auto; }
+
+.chip { display: inline-block; padding: 2px 8px; border-radius: 6px; background: var(--fill); font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+details.acct + details.acct { border-top: 1px solid var(--line); }
+details.acct > summary { list-style: none; cursor: pointer; flex-wrap: wrap; }
+details.acct > summary::-webkit-details-marker { display: none; }
+details.acct > summary:hover { background: var(--surface-2); }
+details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.acct-detail { display: grid; gap: 14px; padding: 4px 18px 18px; }
+.acct-detail .actions { margin: 0; }
+.progress { display: grid; gap: 6px; }
+.progress-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.meter { height: 8px; border-radius: 999px; background: var(--fill); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.3s; }
+
+.table.compact th, .table.compact td { padding: 8px 10px; font-size: 13px; }
+.acct-detail .table { display: block; overflow-x: auto; }
+
+.form { display: grid; gap: 16px; padding: 18px; }
+.field { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.field > span:first-child { font-weight: 600; }
+.field-row { display: flex; flex-wrap: wrap; gap: 18px; }
+.field-note { margin: -8px 0 0; }
+.input { width: 100%; max-width: 360px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--fill); color: var(--ink); }
+.input:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.pick { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); cursor: pointer; color: var(--ink); }
+.pick.on { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.pick b { display: block; font-size: 14px; }
+.pick small { display: block; color: var(--ink-3); }
+
+.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.mini-stats small { display: block; font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.actions.tight { margin: 0; }
+
+.market-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+.market-price { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.market-price strong { font-size: 40px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.market-price span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 0; }
+.chart-toolbar .segmented { min-width: 140px; }
+.chart { height: 440px; padding: 8px 4px 4px; }
+.segmented.wide { width: 100%; max-width: 520px; }
+.segmented.wide button { padding: 6px 8px; font-size: 13px; }
+
 /* ------------------------------------------------------------ hoja de confirmación */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
@@ -321,7 +399,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srg
 
 /* ------------------------------------------------------------ móvil: barra inferior tipo iOS */
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar {
     position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 40;
     height: auto; flex-direction: row; gap: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
@@ -336,12 +414,22 @@ button:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srg
   .content { padding: 20px 16px 96px; }
   .topbar h1 { font-size: 28px; }
   .cards { grid-template-columns: 1fr; }
-  .tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile-value { overflow-wrap: anywhere; }
   .tile { padding: 14px; }
   .tile-value { font-size: 22px; }
   .row { flex-wrap: wrap; padding: 12px 14px; }
   .account .acct-nums { width: 100%; justify-content: space-between; text-align: left; }
   .actions-status { margin-left: 0; }
   .toast { bottom: 88px; }
+  .nav { justify-content: flex-start; overflow-x: auto; gap: 2px; scrollbar-width: none; min-width: 0; flex: 1; }
+  .group-card .table { display: block; overflow-x: auto; }
+  .nav-head { display: none; }
+  .nav-item { flex: none; min-width: 64px; }
+  .mini-stats { grid-template-columns: 1fr 1fr; }
+  details.acct .acct-nums { width: 100%; justify-content: space-between; text-align: left; flex-wrap: wrap; gap: 12px; }
+  .chart { height: 340px; }
+  .market-price strong { font-size: 32px; }
+  .jf-hero { padding: 20px; }
   .table th, .table td { padding: 10px 12px; }
 }

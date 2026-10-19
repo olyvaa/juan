@@ -1,0 +1,374 @@
+// Motor de Juanitos Funding: cuentas simuladas tipo LucidFlex, grupos y ejecución del bot
+// sobre el precio del MNQ. Todo es simulado y se guarda en el navegador (localStorage).
+import { Market, aggregate, type Bar, type SourceId } from './market';
+import { MNQ, PLANS, RULES, fmtNy, hm, ny, planById, tradingDay, type Plan } from './plans';
+import { JET_TICKS, goatProSignal, gyrSignal, isJetAnchorBar, rangOpenSignal, type StrategyKey } from './strategies';
+
+export type AccountStatus = 'evaluacion' | 'superada' | 'fondeada' | 'quemada';
+export type Direction = 'ambas' | 'largos' | 'cortos';
+
+export type Position = {
+  side: 1 | -1; qty: number; entry: number; sl: number; tp: number;
+  entryT: number; groupId: string; strategy: StrategyKey;
+};
+
+export type Trade = {
+  id: number; accountId: string; groupId: string; strategy: StrategyKey;
+  side: 1 | -1; qty: number; entry: number; exit: number; entryT: number; exitT: number;
+  pnl: number; reason: string;
+};
+
+export type Account = {
+  id: string; planId: string; createdAt: number; status: AccountStatus;
+  start: number; balance: number; floor: number; highEod: number; lastDay: string;
+  daily: Record<string, number>; position: Position | null; trades: Trade[]; fees: number;
+};
+
+export type Group = {
+  id: string; name: string; strategy: StrategyKey; accountIds: string[];
+  qty: number; tpUsd: number; slUsd: number; direction: Direction;
+  running: boolean; startedAt: number; trades: number; pnl: number;
+  lastExitT: number; lastNyorDay: string;
+  jet: { day: string; up: number; down: number; expires: number } | null;
+};
+
+type State = {
+  version: 1; seq: number; spent: number; source: SourceId; processedT: number;
+  accounts: Account[]; groups: Group[]; log: string[];
+};
+
+const KEY = 'jf-state-v1';
+const tick = MNQ.tick;
+const roundTick = (p: number) => Math.round(p / tick) * tick;
+const usdToPts = (usd: number, qty: number) => Math.max(tick, roundTick(usd / (qty * MNQ.pointValue)));
+
+function emptyState(): State {
+  return { version: 1, seq: 0, spent: 0, source: 'sim-fast', processedT: 0, accounts: [], groups: [], log: [] };
+}
+
+function loadState(): State {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null') as State | null;
+    if (s && s.version === 1 && Array.isArray(s.accounts) && Array.isArray(s.groups)) return s;
+  } catch { /* datos corruptos o navegador sin almacenamiento */ }
+  return emptyState();
+}
+
+export class Engine {
+  state: State = loadState();
+  market: Market;
+  version = 0;
+  private listeners = new Set<() => void>();
+  private saveTimer = 0;
+  private freshStart = true;          // primer lote de datos tras abrir la página
+
+  constructor() {
+    this.market = new Market(this.state.source);
+    this.market.subscribe(() => this.process());
+    this.market.start();
+  }
+
+  // -------------------------------------------------------------- suscripción (React)
+  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
+  getVersion = () => this.version;
+  private changed() {
+    this.version++;
+    this.listeners.forEach(f => f());
+    window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
+      try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* sin almacenamiento */ }
+    }, 400);
+  }
+
+  private log(msg: string, t?: number) {
+    this.state.log.unshift(`${t ? fmtNy(t) + ' NY · ' : ''}${msg}`);
+    if (this.state.log.length > 200) this.state.log.length = 200;
+  }
+
+  // -------------------------------------------------------------- tienda
+  buy(plan: Plan, count: number) {
+    for (let i = 0; i < count; i++) {
+      this.state.seq++;
+      const id = `JF-${plan.name.replace(/\D/g, '')}K-${String(this.state.seq).padStart(4, '0')}`;
+      this.state.accounts.push({
+        id, planId: plan.id, createdAt: Date.now(), status: 'evaluacion',
+        start: plan.size, balance: plan.size, floor: plan.size - plan.maxLoss, highEod: plan.size,
+        lastDay: '', daily: {}, position: null, trades: [], fees: 0,
+      });
+      this.state.spent += plan.price;
+    }
+    this.log(`Compradas ${count} cuenta(s) ${plan.name} por ${plan.price * count} $ ficticios`);
+    this.changed();
+  }
+
+  deleteAccount(id: string) {
+    this.state.accounts = this.state.accounts.filter(a => a.id !== id);
+    this.state.groups.forEach(g => { g.accountIds = g.accountIds.filter(x => x !== id); });
+    this.changed();
+  }
+
+  activateFunded(id: string) {
+    const a = this.acc(id);
+    const plan = a && planById(a.planId);
+    if (!a || !plan || a.status !== 'superada') return;
+    Object.assign(a, { status: 'fondeada', balance: plan.size, start: plan.size, floor: plan.size - plan.maxLoss, highEod: plan.size, daily: {}, lastDay: '' });
+    this.log(`${a.id}: cuenta FONDEADA activada`);
+    this.changed();
+  }
+
+  // -------------------------------------------------------------- grupos
+  createGroup(g: Omit<Group, 'id' | 'running' | 'startedAt' | 'trades' | 'pnl' | 'lastExitT' | 'lastNyorDay' | 'jet'>) {
+    this.state.seq++;
+    this.state.groups.push({ ...g, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
+    this.changed();
+  }
+
+  deleteGroup(id: string) {
+    this.state.groups = this.state.groups.filter(g => g.id !== id || g.running);
+    this.changed();
+  }
+
+  /** Devuelve un error si no se puede lanzar. */
+  launchGroup(id: string): string | null {
+    const g = this.group(id);
+    if (!g) return 'El grupo no existe.';
+    const usable = g.accountIds.map(x => this.acc(x)).filter((a): a is Account => !!a && (a.status === 'evaluacion' || a.status === 'fondeada'));
+    if (usable.length === 0) return 'El grupo no tiene cuentas activas (en evaluación o fondeadas).';
+    const busy = usable.find(a => this.state.groups.some(o => o.running && o.id !== g.id && o.accountIds.includes(a.id)));
+    if (busy) return `${busy.id} ya está operando en otro grupo. Una cuenta solo puede estar en un grupo activo.`;
+    g.running = true;
+    g.startedAt = this.market.bars.length ? this.market.bars[this.market.bars.length - 1].t : 0;
+    g.jet = null;
+    this.log(`Grupo "${g.name}" LANZADO con ${usable.length} cuenta(s)`, g.startedAt || undefined);
+    this.changed();
+    return null;
+  }
+
+  stopGroup(id: string, flatten: boolean) {
+    const g = this.group(id);
+    if (!g) return;
+    g.running = false;
+    g.jet = null;
+    if (flatten) this.state.accounts.forEach(a => { if (a.position?.groupId === id) this.close(a, this.market.last, this.nowT(), 'Cierre manual'); });
+    this.log(`Grupo "${g.name}" detenido${flatten ? ' y posiciones cerradas' : ''}`);
+    this.changed();
+  }
+
+  closeAccount(id: string) {
+    const a = this.acc(id);
+    if (a?.position) { this.close(a, this.market.last, this.nowT(), 'Cierre manual'); this.changed(); }
+  }
+
+  // -------------------------------------------------------------- fuente de datos
+  setSource(source: SourceId) {
+    if (source === this.state.source) return;
+    this.state.accounts.forEach(a => { if (a.position) this.close(a, this.market.last, this.nowT(), 'Cambio de fuente de precio'); });
+    this.state.groups.forEach(g => { g.startedAt = 0; g.jet = null; });
+    this.state.source = source;
+    this.state.processedT = 0;
+    this.market.stop();
+    this.market = new Market(source);
+    this.market.subscribe(() => this.process());
+    this.freshStart = true;
+    this.market.start();
+    this.log(`Fuente de precio: ${source}`);
+    this.changed();
+  }
+
+  // -------------------------------------------------------------- utilidades
+  acc(id: string) { return this.state.accounts.find(a => a.id === id); }
+  group(id: string) { return this.state.groups.find(g => g.id === id); }
+  groupOf(accountId: string) { return this.state.groups.find(g => g.running && g.accountIds.includes(accountId)); }
+  private nowT() { const b = this.market.bars; return b.length ? b[b.length - 1].t + 60 : Math.floor(Date.now() / 1000); }
+
+  unrealized(a: Account) {
+    const p = a.position;
+    return p ? p.side * (this.market.last - p.entry) * MNQ.pointValue * p.qty : 0;
+  }
+
+  /** Beneficio del mejor día y beneficio total (para la regla de consistencia). */
+  consistency(a: Account) {
+    const days = Object.values(a.daily);
+    return { best: days.length ? Math.max(0, ...days) : 0, total: a.balance - a.start };
+  }
+
+  // -------------------------------------------------------------- simulación
+  private process() {
+    const bars = this.market.bars;
+    if (bars.length === 0) { this.changed(); return; }
+    const last = bars[bars.length - 1].t;
+    if (this.freshStart) {
+      this.freshStart = false;
+      const sim = this.state.source !== 'yahoo';
+      // En el simulador cada apertura genera un mercado nuevo: las posiciones anteriores se anulan.
+      if (sim) {
+        let voided = 0;
+        this.state.accounts.forEach(a => { if (a.position) { a.position = null; voided++; } });
+        if (voided) this.log(`${voided} posición(es) anuladas: el mercado simulado se ha reiniciado`);
+        this.state.groups.forEach(g => { g.startedAt = Math.min(g.startedAt, last); g.jet = null; });
+      }
+      if (sim || this.state.processedT === 0 || this.state.processedT > last) this.state.processedT = last;
+    }
+    const start = bars.findIndex(b => b.t > this.state.processedT);
+    if (start >= 0) {
+      for (let i = start; i < bars.length; i++) this.onBar(bars, i);
+      this.state.processedT = last;
+    }
+    this.changed();
+  }
+
+  private onBar(bars: Bar[], i: number) {
+    const b = bars[i];
+    const day = tradingDay(b.t);
+    const closeMin = ny(b.t + 60).minutes;
+
+    // 1. Cierre de día: el drawdown trailing se recalcula con el saldo al cierre
+    for (const a of this.state.accounts) {
+      if (a.lastDay && a.lastDay !== day) this.endOfDay(a, b.t);
+      a.lastDay = day;
+    }
+
+    // 2. Salidas por SL / TP y liquidación por pérdida máxima
+    for (const a of this.state.accounts) if (a.position) this.exitCheck(a, b, false);
+
+    // 3. Cierre obligatorio antes del cierre de sesión
+    if (closeMin >= hm(RULES.flattenAt) && closeMin < hm('18:00'))
+      for (const a of this.state.accounts) if (a.position) this.close(a, b.c, b.t + 60, 'Cierre de sesión');
+
+    // 4. Señales
+    const running = this.state.groups.filter(g => g.running && b.t > g.startedAt);
+    if (running.length === 0) return;
+
+    for (const g of running.filter(x => x.strategy === 'jetf1')) this.jetF1(g, b, day);
+
+    if ((b.t + 60) % 300 !== 0) return;          // ¿se acaba de cerrar una vela de 5 min?
+    const fiveMin = running.filter(x => x.strategy !== 'jetf1');
+    if (fiveMin.length === 0) return;
+    const bars5 = aggregate(bars.slice(Math.max(0, i - 1400), i + 1), 5);
+    const b5 = bars5[bars5.length - 1];
+    for (const g of fiveMin) {
+      if (b5.t <= g.startedAt) continue;
+      if (g.lastExitT && b5.t < g.lastExitT) continue;       // 1 vela de espera tras cerrar
+      let sig: 1 | -1 | 0 = 0;
+      if (g.strategy === 'goatpro') sig = goatProSignal(bars5);
+      else if (g.strategy === 'gyr') sig = gyrSignal(b5);
+      else if (g.strategy === 'rangopenny' && g.lastNyorDay !== day) {
+        sig = rangOpenSignal(bars5);
+        if (sig) g.lastNyorDay = day;
+      }
+      if (sig) this.openGroup(g, sig, b.c, b.t + 60);
+    }
+  }
+
+  private jetF1(g: Group, b: Bar, day: string) {
+    if (isJetAnchorBar(b) && (!g.jet || g.jet.day !== day)) {
+      g.jet = { day, up: roundTick(b.c + JET_TICKS * tick), down: roundTick(b.c - JET_TICKS * tick), expires: b.t + 120 };
+      this.log(`${g.name}: ancla JetF1 @ ${b.c} → compra ${g.jet.up} / venta ${g.jet.down}`, b.t + 60);
+      return;
+    }
+    const j = g.jet;
+    if (!j || j.day !== day || j.up === 0) return;
+    if (b.t >= j.expires) { j.up = 0; return; }     // caducan sin ejecutarse
+    let hitUp = b.h >= j.up, hitDn = b.l <= j.down;
+    if (hitUp && hitDn) { if (Math.abs(b.o - j.up) <= Math.abs(b.o - j.down)) hitDn = false; else hitUp = false; }
+    if (!hitUp && !hitDn) return;
+    const level = hitUp ? j.up : j.down;
+    j.up = 0; j.down = 0;                           // OCO: solo una entrada por día
+    this.openGroup(g, hitUp ? 1 : -1, level, b.t);
+    // La entrada ocurre DENTRO de esta vela: se revisa ya su stop (supuesto conservador)
+    for (const a of this.state.accounts) if (a.position?.groupId === g.id && a.position.entryT === b.t) this.exitCheck(a, b, true);
+  }
+
+  /** SL / TP con la vela b. Si ambos se tocan, cuenta el SL. En la vela de entrada, el TP solo si cierra más allá. */
+  private exitCheck(a: Account, b: Bar, entryBar: boolean) {
+    const p = a.position!;
+    const slHit = p.side > 0 ? b.l <= p.sl : b.h >= p.sl;
+    const tpHit = p.side > 0 ? b.h >= p.tp : b.l <= p.tp;
+    if (slHit) this.close(a, p.sl - p.side * RULES.slippageTicks * tick, b.t + 60, 'Stop loss');
+    else if (tpHit && (!entryBar || (p.side > 0 ? b.c >= p.tp : b.c <= p.tp))) this.close(a, p.tp, b.t + 60, 'Take profit');
+    if (a.position) this.checkLiquidation(a, b);
+  }
+
+  private openGroup(g: Group, side: 1 | -1, price: number, t: number) {
+    if (g.direction === 'largos' && side < 0) return;
+    if (g.direction === 'cortos' && side > 0) return;
+    let opened = 0;
+    for (const id of g.accountIds) {
+      const a = this.acc(id);
+      const plan = a && planById(a.planId);
+      if (!a || !plan || a.position || (a.status !== 'evaluacion' && a.status !== 'fondeada')) continue;
+      const qty = Math.max(1, Math.min(g.qty, plan.maxMicros));
+      const entry = roundTick(price + side * RULES.slippageTicks * tick);
+      a.position = {
+        side, qty, entry, entryT: t, groupId: g.id, strategy: g.strategy,
+        sl: roundTick(entry - side * usdToPts(g.slUsd, qty)),
+        tp: roundTick(entry + side * usdToPts(g.tpUsd, qty)),
+      };
+      opened++;
+    }
+    if (opened) this.log(`${g.name}: ${side > 0 ? 'COMPRA' : 'VENTA'} en ${opened} cuenta(s) @ ${roundTick(price)}`, t);
+  }
+
+  private close(a: Account, price: number, t: number, reason: string) {
+    const p = a.position;
+    if (!p) return;
+    const exit = roundTick(price);
+    const fees = RULES.commissionPerMicroRT * p.qty;
+    const pnl = p.side * (exit - p.entry) * MNQ.pointValue * p.qty - fees;
+    a.balance += pnl;
+    a.fees += fees;
+    const day = tradingDay(t - 60);
+    a.daily[day] = (a.daily[day] || 0) + pnl;
+    this.state.seq++;
+    a.trades.unshift({ id: this.state.seq, accountId: a.id, groupId: p.groupId, strategy: p.strategy, side: p.side, qty: p.qty, entry: p.entry, exit, entryT: p.entryT, exitT: t, pnl, reason });
+    if (a.trades.length > 150) a.trades.length = 150;
+    a.position = null;
+    const g = this.group(p.groupId);
+    if (g) { g.trades++; g.pnl += pnl; g.lastExitT = t; }
+    if (a.balance <= a.floor + 1e-9) this.burn(a, t);
+    else this.checkPass(a, t);
+  }
+
+  /** Si el precio llega a la pérdida máxima dentro de la vela, se liquida en ese precio. */
+  private checkLiquidation(a: Account, b: Bar) {
+    const p = a.position!;
+    const worst = p.side > 0 ? b.l : b.h;
+    const eq = a.balance + p.side * (worst - p.entry) * MNQ.pointValue * p.qty - RULES.commissionPerMicroRT * p.qty;
+    if (eq > a.floor) return;
+    const liq = p.entry + p.side * ((a.floor - a.balance + RULES.commissionPerMicroRT * p.qty) / (MNQ.pointValue * p.qty));
+    this.close(a, p.side > 0 ? Math.floor(liq / tick) * tick : Math.ceil(liq / tick) * tick, b.t + 60, 'Pérdida máxima');
+  }
+
+  private burn(a: Account, t: number) {
+    if (a.status === 'quemada') return;
+    a.status = 'quemada';
+    this.log(`${a.id}: QUEMADA (pérdida máxima alcanzada)`, t);
+  }
+
+  private endOfDay(a: Account, t: number) {
+    const plan = planById(a.planId);
+    if (!plan || a.status === 'quemada') return;
+    if (a.balance > a.highEod) a.highEod = a.balance;
+    a.floor = Math.min(a.start, Math.max(a.floor, a.highEod - plan.maxLoss));   // se bloquea en el saldo inicial
+    this.checkPass(a, t);
+  }
+
+  private checkPass(a: Account, t: number) {
+    const plan = planById(a.planId);
+    if (!plan || a.status !== 'evaluacion') return;
+    const { best, total } = this.consistency(a);
+    if (total >= plan.target && best <= total * RULES.consistency) {
+      a.status = 'superada';
+      this.log(`${a.id}: EVALUACIÓN SUPERADA (+${Math.round(total)} $)`, t);
+    }
+  }
+}
+
+export { PLANS };
+
+// Un único motor por pestaña del navegador: sigue simulando aunque cambies de sección.
+let instance: Engine | null = null;
+export function getEngine() {
+  if (!instance) instance = new Engine();
+  return instance;
+}

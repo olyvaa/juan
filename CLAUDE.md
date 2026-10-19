@@ -16,6 +16,10 @@ Los grupos se identifican por ID; dos grupos pueden tener los mismos miembros. N
 
 C# 7.3 para NinjaTrader 8: estrategias en `ninjatrader/Strategies` y AddOn (panel + copiador) en `ninjatrader/AddOns`. No se puede compilar aquí contra NinjaTrader real; se verifica contra una imitación de la API y el usuario compila con F5. No declarar que funciona en NinjaTrader sin su confirmación. El copiador copia la posición neta con órdenes a mercado y no copia stops pendientes: mantener esa advertencia. Tandem (`index.html`, `src/App.tsx`…) sigue siendo demo. El panel del bot (`panel.html`, `src/panel/`) sí se conecta al AddOn mediante el puente `CCBridge` en `http://localhost:8793` (solo localhost, cabecera `X-CC-Panel` obligatoria en los POST). Sin puente, el panel muestra datos de ejemplo con la etiqueta de modo demo y no envía nada: mantener ese comportamiento. La cuenta maestra por defecto del copiador debe ser simulada.
 
+## Juanitos Funding (`src/funding/`)
+
+Prop firm 100 % simulada dentro del panel: compra ficticia de cuentas con reglas de LucidFlex, grupos y bot sobre el precio del MNQ (Yahoo con retraso vía proxy de Vite, o mercado simulado). Mantener la etiqueta "Juanitos Funding · simulado", no usar logos ni marca de Lucid y no presentar nada como dinero o cuentas reales. Las reglas del motor tienen pruebas aisladas (ver historial); al cambiar `engine.ts`, comprobar que el saldo menos el capital coincide con la suma de las operaciones.
+
 ## Desarrollo
 
 React, TypeScript, Vite, CSS y lucide-react. No hay suite automatizada persistida. La compilación verificada es `npm run build`. Ejecutar ESLint sobre los archivos cambiados y comprobar funcionalmente la interacción afectada; no declarar comprobaciones no ejecutadas. Hay importaciones sin usar heredadas en la antigua tienda y una advertencia de Fast Refresh por la exportación compartida de AccountGroups.tsx.

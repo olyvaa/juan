@@ -56,6 +56,33 @@ Se abre en `http://localhost:5173/panel.html`. Si NinjaTrader está abierto con 
 conecta solo a `http://localhost:8793` y muestra datos reales: estrategias activas, pausar, reanudar, cerrar,
 kill switch, copiador y cuentas. Si no, muestra **datos de ejemplo** con la etiqueta *Modo demo*, y los botones no envían nada.
 
+### Juanitos Funding (prop firm simulada)
+
+Sección del panel que funciona **sin NinjaTrader**:
+
+- **Tienda:** compra ficticia de cuentas Flex 25K/50K/100K/150K con las reglas publicadas de LucidFlex: objetivo,
+  pérdida máxima con trailing al cierre del día, sin límite diario, consistencia del 50 % y máximo de micros.
+- **Mis cuentas:** saldo, progreso al objetivo, margen hasta la pérdida máxima y operaciones. Estados: evaluación,
+  superada, fondeada y quemada.
+- **Grupos:** cuentas + estrategia (GoatPro, GYR, RangOpenNY, JetF1) + contratos, TP $, SL $ y dirección.
+  Se lanzan y se detienen. Una cuenta solo puede estar en un grupo activo.
+- **Mercado:** gráfico de velas del MNQ con las operaciones marcadas. Tiene tres fuentes de precio:
+  *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite (solo con `npm run dev`/`npm run panel`);
+  *Simulado*, y *Simulado rápido* (60×).
+
+Todo es simulado y se guarda en el navegador (`localStorage`, clave `jf-state-v1`). Solo simula mientras la pestaña
+está abierta. Al reabrir con Yahoo procesa las velas que se ha perdido; con el simulador, el mercado se regenera y las
+posiciones abiertas se anulan. Supuestos: 1 $ de comisión por micro, 1 tick de deslizamiento, SL antes que TP si los
+dos se tocan en la misma vela, cierre a las 16:55 NY y el trailing se bloquea en el saldo inicial.
+
+- `src/funding/plans.ts`: planes, reglas y hora de Nueva York.
+- `src/funding/market.ts`: fuentes de precio y velas.
+- `src/funding/strategies.ts`: señales de las 4 estrategias (traducidas de `ninjatrader/Strategies`).
+- `src/funding/engine.ts`: cuentas, reglas, grupos y ejecución simulada.
+- `src/funding/FundingViews.tsx` y `Chart.tsx`: vistas y gráfico (lightweight-charts).
+
+### Archivos del panel
+
 - `src/panel/Panel.tsx`: vistas y lógica del panel.
 - `src/panel/api.ts`: conexión con el puente y datos de demo.
 - `src/panel/catalog.ts`: ficha y resultados de cada estrategia.
