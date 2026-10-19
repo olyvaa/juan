@@ -70,14 +70,18 @@ Sección del panel que funciona **sin NinjaTrader**:
 - **Grupos:** estrategia (GoatPro, GYR, RangOpenNY, JetF1) + cuentas, con una tabla de monitorización por cuenta: estado,
   posición, balance, PnL del día, último PnL, abierto y casillas editables de CT, PDLL (pérdida del día), PDPT
   (objetivo del día), TP $ y SL $, más un interruptor OPS. Activar / Detener / Editar / Eliminar. Con el grupo activo, la
-  edición se bloquea. Una cuenta solo puede estar en un grupo activo.
+  edición se bloquea. Una cuenta solo puede estar en un grupo activo. El grupo opera con **todas las cuentas a la vez** o
+  **una a una** (o 2/3 a la vez): en ese modo, cuando una cuenta supera o se quema, entra la siguiente del orden (flechas
+  en la tabla). CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
+- **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
 - **Mercado:** precio del MNQ y fuente de datos. Hay cuatro fuentes:
   *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`);
   *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite;
   *Simulado*, y *Simulado rápido* (60×).
 
 Todo es simulado y se guarda en el navegador (`localStorage`, clave `jf-state-v1`). Solo simula mientras la pestaña
-está abierta. Al reabrir con Yahoo procesa las velas que se ha perdido; con el simulador, el mercado se regenera y las
+está abierta. Al reabrir, en las velas que se ha perdido solo revisa SL/TP de lo abierto (sin entradas nuevas), y anula
+las posiciones abiertas con otra fuente de precio o con un precio fuera de lugar; con el simulador, el mercado se regenera y las
 posiciones abiertas se anulan. Supuestos: 1 $ de comisión por micro, 1 tick de deslizamiento, SL antes que TP si los
 dos se tocan en la misma vela, cierre a las 16:55 NY y el trailing se bloquea en el saldo inicial.
 

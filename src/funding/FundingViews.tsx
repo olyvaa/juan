@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
 import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
 import { SOURCES } from './market';
 import type { AccountInfo } from '../panel/api';
@@ -130,7 +130,7 @@ function AccountRow({ a, e, ask }: { a: Account; e: Engine; ask: (c: Confirm) =>
         <div className="acct-nums">
           <span><small>Saldo</small>{usd(a.balance)}</span>
           <span className={tone(profit)}><small>Resultado</small>{signedUsd(profit)}</span>
-          <span className={tone(unreal)}><small>Abierto</small>{signedUsd(unreal)}</span>
+          <span className={tone(unreal)}><small>Abierto</small>{a.position && !e.priced(a) ? 'sin precio' : signedUsd(unreal)}</span>
           <span><small>Margen hasta pérdida máx.</small>{usd(Math.max(0, equity - a.floor))}</span>
         </div>
       </summary>
@@ -151,6 +151,11 @@ function AccountRow({ a, e, ask }: { a: Account; e: Engine; ask: (c: Confirm) =>
             <button type="button" className="btn primary" onClick={() => e.activateFunded(a.id)}><Rocket size={16} /> Activar cuenta fondeada</button>
           )}
           {a.position && <button type="button" className="btn" onClick={() => e.closeAccount(a.id)}>Cerrar posición</button>}
+          <button
+            type="button" className="btn" disabled={!!group}
+            title={group ? 'Detén antes su grupo' : undefined}
+            onClick={() => ask({ title: `Reiniciar ${a.id}`, message: 'Vuelve al saldo inicial, en evaluación y sin historial de operaciones.', action: 'Reiniciar', onConfirm: () => e.resetAccount(a.id) })}
+          ><RotateCcw size={15} /> Reiniciar</button>
           <button
             type="button" className="btn danger-ghost" disabled={!!group}
             title={group ? 'Quítala antes del grupo activo' : undefined}
@@ -258,7 +263,16 @@ export function MisCuentas({ ask, ntAccounts, ntConnected }: Props & NtProps) {
         <Tile label="Fondeadas" value={count('fondeada')} />
         <Tile label="Quemadas" value={count('quemada')} />
       </div>
-      <Section title="Cuentas simuladas (Juanitos Funding)" footer="Pulsa una cuenta para ver su progreso, el suelo de pérdida y sus operaciones.">
+      <Section
+        title="Cuentas simuladas (Juanitos Funding)"
+        footer="Pulsa una cuenta para ver su progreso, el suelo de pérdida y sus operaciones."
+        action={
+          <div className="actions tight">
+            <button type="button" className="btn small" onClick={() => ask({ title: 'Reiniciar todas las cuentas', message: 'Se detienen los grupos y todas las cuentas vuelven al saldo inicial, en evaluación y sin historial.', action: 'Reiniciar todas', destructive: true, onConfirm: () => e.resetAllAccounts() })}><RotateCcw size={14} /> Reiniciar todas</button>
+            <button type="button" className="btn small danger-ghost" onClick={() => ask({ title: 'Borrar todo Juanitos Funding', message: 'Se borran todas las cuentas simuladas, los grupos, el gasto y el historial. Las cuentas reales de NinjaTrader que sigues no se tocan.', action: 'Borrar todo', destructive: true, onConfirm: () => e.wipeAll() })}><Trash2 size={14} /> Borrar todo</button>
+          </div>
+        }
+      >
         {accts.map(a => <AccountRow key={a.id} a={a} e={e} ask={ask} />)}
       </Section>
     </>
@@ -271,7 +285,12 @@ const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'ambas', label: 'Ambas' }, { id: 'largos', label: 'Solo largos' }, { id: 'cortos', label: 'Solo cortos' },
 ];
 
-type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number };
+type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number };
+
+const BATCHES: { v: number; label: string }[] = [
+  { v: 0, label: 'Todas a la vez' }, { v: 1, label: 'Una a una' }, { v: 2, label: '2 a la vez' }, { v: 3, label: '3 a la vez' },
+];
+const batchLabel = (n: number) => BATCHES.find(b => b.v === n)?.label || `${n} a la vez`;
 
 /** Formulario para crear un grupo o editarlo (nombre, estrategia, dirección y cuentas). */
 function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial: FormValues; editing?: Group; onDone: () => void; notify: Props['notify'] }) {
@@ -284,10 +303,10 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
     if (!v.name.trim()) { notify('Ponle un nombre al grupo', true); return; }
     if (v.accountIds.length === 0) { notify('Elige al menos una cuenta', true); return; }
     if (editing) {
-      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds });
+      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch });
       notify(`Grupo "${v.name.trim()}" actualizado`);
     } else {
-      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl });
+      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch });
       notify(`Grupo "${v.name.trim()}" creado. Ajusta cada cuenta en la tabla y pulsa Activar.`);
     }
     onDone();
@@ -311,9 +330,17 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
         </label>
       </div>
       <p className="muted field-note">{STRATEGY_INFO[v.strategy].note}</p>
+      <div className="field"><span>Cómo operan las cuentas</span>
+        <div className="segmented wide" role="radiogroup" aria-label="Cómo operan las cuentas">
+          {BATCHES.map(b => <button key={b.v} type="button" role="radio" aria-checked={v.batch === b.v} className={v.batch === b.v ? 'on' : ''} onClick={() => set({ batch: b.v })}>{b.label}</button>)}
+        </div>
+        <span className="muted">
+          {v.batch === 0 ? 'Todas las cuentas reciben cada señal.' : `Solo operan ${v.batch === 1 ? 'la primera cuenta' : `las ${v.batch} primeras`} de la lista. Cuando una supera la evaluación o se quema, entra la siguiente. El orden se cambia con las flechas de la tabla.`}
+        </span>
+      </div>
       {!editing && (
         <div className="field-row">
-          <div className="field"><span>CT por defecto</span><Stepper label="Contratos" value={Math.min(v.qty, maxQty)} min={1} max={maxQty} onChange={q => set({ qty: q })} suffix=" ct" /></div>
+          <div className="field"><span>CT por defecto (MNQ)</span><Stepper label="Contratos" value={Math.min(v.qty, maxQty)} min={1} max={maxQty} onChange={q => set({ qty: q })} suffix=" ct" /><small className="muted">= {(Math.min(v.qty, maxQty) / 10).toLocaleString('es-ES')} lote(s) de NQ</small></div>
           <div className="field"><span>TP $ por defecto</span><Stepper label="Take profit" value={v.tp} min={25} max={5000} step={25} onChange={tp => set({ tp })} /></div>
           <div className="field"><span>SL $ por defecto</span><Stepper label="Stop loss" value={v.sl} min={25} max={5000} step={25} onChange={sl => set({ sl })} /></div>
         </div>
@@ -359,12 +386,13 @@ function NumCell({ value, onCommit, disabled, label, placeholder }: { value: num
 }
 
 /** Estado de una cuenta dentro del grupo (columna ESTADO). */
-function memberState(a: Account, m: Member, today: string): { label: string; kind: 'good' | 'warn' | 'bad' | 'neutral' | 'live' } {
+function memberState(a: Account, m: Member, today: string, queuePos: number): { label: string; kind: 'good' | 'warn' | 'bad' | 'neutral' | 'live' } {
   if (a.status === 'quemada') return { label: 'MLL', kind: 'bad' };
   if (a.status === 'superada') return { label: 'OBJETIVO', kind: 'good' };
   if (a.position) return { label: a.position.side > 0 ? 'EN LARGO' : 'EN CORTO', kind: 'live' };
   if (m.stopDay === today) return { label: m.stopReason, kind: m.stopReason === 'PDPT' ? 'good' : 'bad' };
   if (!m.enabled) return { label: 'OFF', kind: 'neutral' };
+  if (queuePos > 0) return { label: `EN COLA ${queuePos}`, kind: 'warn' };
   const last = a.trades[0];
   if (last && tradingDay(last.exitT - 60) === today) {
     if (last.reason === 'Take profit') return { label: 'SALIDA TP', kind: 'good' };
@@ -381,6 +409,8 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
   const today = tradingDay(bars.length ? bars[bars.length - 1].t + 60 : Math.floor(Date.now() / 1000));
   const launch = () => { const err = e.launchGroup(g.id); notify(err || `"${g.name}" operando con ${STRATEGY_INFO[g.strategy].name}`, !!err); };
   const info = STRATEGY_INFO[g.strategy];
+  const active = e.activeMembers(g);
+  const waiting = g.batch > 0 ? g.accountIds.filter(id => !active.includes(id) && g.members[id]?.enabled && (e.acc(id)?.status === 'evaluacion' || e.acc(id)?.status === 'fondeada')) : [];
 
   return (
     <section className="monitor">
@@ -394,6 +424,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
           {g.running ? <StatusPill kind="good">ACTIVO</StatusPill> : <StatusPill kind="neutral">INACTIVO</StatusPill>}
           <span>{info.name} · MNQ · M{info.tf}</span>
           <span>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
+          <span>{batchLabel(g.batch)}</span>
           <span>{g.accountIds.length} ctas</span>
           <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
         </div>
@@ -413,7 +444,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
 
       {editing && !g.running && (
         <GroupForm e={e} editing={g} notify={notify} onDone={() => setEditing(false)}
-          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd }} />
+          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch }} />
       )}
 
       {open && (
@@ -422,7 +453,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
             <thead>
               <tr>
                 <th>Estado</th><th className="left">Cuenta</th><th>Símbolo</th><th>Pos</th><th>Balance</th><th>PnL día</th>
-                <th>Último PnL</th><th>Open</th><th>CT</th><th>PDLL</th><th>PDPT</th><th>TP $</th><th>SL $</th><th>OPS</th>
+                <th>Último PnL</th><th>Open</th><th title="Contratos MNQ (micros). 10 CT = 1 lote de NQ">CT</th><th>PDLL</th><th>PDPT</th><th>TP $</th><th>SL $</th><th>OPS</th>
               </tr>
             </thead>
             <tbody>
@@ -432,27 +463,38 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
                 const unreal = e.unrealized(a);
                 const dayPnl = (a.daily[today] || 0) + unreal;
                 const last = a.trades[0];
-                const st = memberState(a, m, today);
+                const st = memberState(a, m, today, waiting.indexOf(id) + 1);
+                const priced = !a.position || e.priced(a);
+                const plan = planById(a.planId)!;
+                const slRisk = m.slUsd >= plan.maxLoss;
                 const lock = g.running;
                 const upd = (patch: Partial<Member>) => e.updateMember(g.id, id, patch);
                 return (
                   <tr key={id} className={m.enabled ? '' : 'off'}>
                     <td><span className={`state ${st.kind}`}>{st.label}</span></td>
                     <td className="left">
+                      {g.batch > 0 && !lock && (
+                        <span className="order-btns">
+                          <button type="button" aria-label={`Subir ${a.id}`} onClick={() => e.moveMember(g.id, id, -1)}><ArrowUp size={12} /></button>
+                          <button type="button" aria-label={`Bajar ${a.id}`} onClick={() => e.moveMember(g.id, id, 1)}><ArrowDown size={12} /></button>
+                        </span>
+                      )}
                       <span className="acct-name">{a.id}</span>
                       <span className={`phase ${a.status}`}>{STATUS[a.status].label}</span>
                     </td>
                     <td>{a.position ? 'MNQ' : '—'}</td>
                     <td>{a.position ? `${a.position.side > 0 ? '+' : '−'}${a.position.qty}` : '—'}</td>
                     <td>{usd(a.balance)}</td>
-                    <td className={tone(dayPnl)}>{signedUsd(dayPnl)}</td>
+                    <td className={tone(dayPnl)}>{priced ? signedUsd(dayPnl) : '—'}</td>
                     <td className={`strong ${tone(last?.pnl || 0)}`}>{last ? signedUsd(last.pnl) : '—'}</td>
-                    <td className={tone(unreal)}>{signedUsd(unreal)}</td>
+                    <td className={tone(unreal)} title={priced ? undefined : 'Sin precio de mercado ahora mismo'}>{priced ? signedUsd(unreal) : '—'}</td>
                     <td><NumCell label={`CT de ${id}`} value={m.qty} disabled={lock} onCommit={n => upd({ qty: n })} /></td>
                     <td><NumCell label={`PDLL de ${id}`} value={m.pdll} disabled={lock} placeholder="—" onCommit={n => upd({ pdll: n })} /></td>
                     <td><NumCell label={`PDPT de ${id}`} value={m.pdpt} disabled={lock} placeholder="—" onCommit={n => upd({ pdpt: n })} /></td>
                     <td><NumCell label={`TP de ${id}`} value={m.tpUsd} disabled={lock} onCommit={n => upd({ tpUsd: n })} /></td>
-                    <td><NumCell label={`SL de ${id}`} value={m.slUsd} disabled={lock} onCommit={n => upd({ slUsd: n })} /></td>
+                    <td className={slRisk ? 'risk' : ''} title={slRisk ? `El SL (${usd(m.slUsd)}) es igual o mayor que la pérdida máxima de la cuenta (${usd(plan.maxLoss)}): un solo stop la quema` : undefined}>
+                      <NumCell label={`SL de ${id}`} value={m.slUsd} disabled={lock} onCommit={n => upd({ slUsd: n })} />
+                    </td>
                     <td><Toggle on={m.enabled} label={`OPS de ${id}`} onChange={x => upd({ enabled: x })} /></td>
                   </tr>
                 );
@@ -473,14 +515,15 @@ export function Grupos({ ask, notify }: Props) {
       <div className="groups-intro">
         <button type="button" className="btn primary" onClick={() => setCreating(!creating)}><Plus size={16} /> Nuevo grupo</button>
         <p className="muted">
-          Estrategia + cuentas. En la tabla ajustas cada cuenta: CT, TP $, SL $, PDLL (pérdida del día) y PDPT (objetivo del día).
+          Estrategia + cuentas. En la tabla ajustas cada cuenta: CT (contratos MNQ; 10 CT = 1 lote de NQ), TP $, SL $, PDLL (pérdida del día) y PDPT (objetivo del día).
+          Un SL en rojo es igual o mayor que la pérdida máxima de la cuenta: un solo stop la quemaría.
           OPS apaga una cuenta sin sacarla del grupo. Con el grupo activo, Editar y la tabla quedan bloqueados.
         </p>
       </div>
       {creating && (
         <Section title="Nuevo grupo">
           <GroupForm e={e} notify={notify} onDone={() => setCreating(false)}
-            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200 }} />
+            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0 }} />
         </Section>
       )}
       {e.state.groups.map(g => <GroupMonitor key={g.id} g={g} e={e} ask={ask} notify={notify} />)}

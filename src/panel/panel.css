@@ -382,8 +382,8 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 
 .monitor-table-wrap { overflow-x: auto; }
 .monitor-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.monitor-table th { padding: 10px 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; text-align: right; }
-.monitor-table td { padding: 6px 6px; text-align: right; border-top: 1px solid var(--line); }
+.monitor-table th { padding: 10px 5px; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; text-align: right; }
+.monitor-table td { padding: 6px 5px; text-align: right; border-top: 1px solid var(--line); }
 .monitor-table th:first-child, .monitor-table td:first-child { padding-left: 18px; text-align: left; }
 .monitor-table th:last-child, .monitor-table td:last-child { padding-right: 18px; }
 .monitor-table .left { text-align: left; }
@@ -392,6 +392,10 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 .monitor-table tr.off td:last-child { opacity: 1; }
 .monitor-table .switch { transform: scale(0.8); transform-origin: right center; }
 .acct-name { font-weight: 600; margin-right: 8px; }
+.order-btns { display: inline-flex; gap: 2px; margin-right: 6px; vertical-align: middle; }
+.order-btns button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: var(--fill); color: var(--ink-2); cursor: pointer; }
+.order-btns button:hover { background: var(--fill-2); color: var(--ink); }
+.group-head .actions { margin: 0; }
 
 .state { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
 .state.good { background: var(--good-bg); color: var(--good); }
@@ -406,11 +410,12 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 .phase.quemada { background: var(--bad-bg); color: var(--bad); }
 
 .cell-input {
-  width: 60px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 8px;
+  width: 54px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--surface-2); color: var(--ink); text-align: right; font-variant-numeric: tabular-nums;
 }
 .cell-input:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 .cell-input:disabled { opacity: 0.6; }
+.monitor-table td.risk .cell-input { border-color: var(--bad-solid); color: var(--bad); background: var(--bad-bg); }
 
 /* ------------------------------------------------------------ hoja de confirmación */
 .sheet-backdrop {

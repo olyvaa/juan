@@ -10,6 +10,7 @@ export type Direction = 'ambas' | 'largos' | 'cortos';
 export type Position = {
   side: 1 | -1; qty: number; entry: number; sl: number; tp: number;
   entryT: number; groupId: string; strategy: StrategyKey;
+  source?: SourceId;   // fuente de precio con la que se abrió: nunca se valora con otra
 };
 
 export type Trade = {
@@ -40,6 +41,7 @@ export type Group = {
   id: string; name: string; strategy: StrategyKey; accountIds: string[];
   qty: number; tpUsd: number; slUsd: number; direction: Direction;   // valores por defecto para cuentas nuevas
   members: Record<string, Member>;
+  batch: number;      // 0 = todas las cuentas a la vez; N = solo N a la vez (en orden): cuando una supera o se quema, entra la siguiente
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
   jet: { day: string; up: number; down: number; expires: number } | null;
@@ -71,6 +73,7 @@ function loadState(): State {
       s.real = s.real || {};
       for (const g of s.groups) {
         g.members = g.members || {};
+        g.batch = g.batch || 0;
         for (const id of g.accountIds) g.members[id] = g.members[id] || newMember(g.qty, g.tpUsd, g.slUsd);
       }
       return s;
@@ -151,12 +154,22 @@ export class Engine {
   }
 
   /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */
-  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[] }) {
+  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number }) {
     const g = this.group(id);
     if (!g || g.running) return;
     const members: Record<string, Member> = {};
     for (const a of patch.accountIds) members[a] = g.members[a] || newMember(g.qty, g.tpUsd, g.slUsd);
     Object.assign(g, patch, { members });
+    this.changed();
+  }
+
+  /** Mueve una cuenta en el orden del grupo (importa en el modo "una a una"). */
+  moveMember(groupId: string, accountId: string, dir: -1 | 1) {
+    const g = this.group(groupId);
+    if (!g || g.running) return;
+    const i = g.accountIds.indexOf(accountId), j = i + dir;
+    if (i < 0 || j < 0 || j >= g.accountIds.length) return;
+    [g.accountIds[i], g.accountIds[j]] = [g.accountIds[j], g.accountIds[i]];
     this.changed();
   }
 
@@ -255,9 +268,51 @@ export class Engine {
   groupOf(accountId: string) { return this.state.groups.find(g => g.running && g.accountIds.includes(accountId)); }
   private nowT() { const b = this.market.bars; return b.length ? b[b.length - 1].t + 60 : Math.floor(Date.now() / 1000); }
 
+  /** ¿Hay precio válido para valorar esta posición? (fuente correcta y precio > 0) */
+  priced(a: Account) {
+    const p = a.position;
+    return !!p && this.market.last > 0 && (p.source || this.state.source) === this.state.source;
+  }
+
   unrealized(a: Account) {
     const p = a.position;
-    return p ? p.side * (this.market.last - p.entry) * MNQ.pointValue * p.qty : 0;
+    return p && this.priced(a) ? p.side * (this.market.last - p.entry) * MNQ.pointValue * p.qty : 0;
+  }
+
+  /** Cuentas del grupo que pueden operar ahora (modo todas a la vez o N a la vez, en orden). */
+  activeMembers(g: Group): string[] {
+    const queue = g.accountIds.filter(id => {
+      const a = this.acc(id), m = g.members[id];
+      return !!a && !!m && m.enabled && (a.status === 'evaluacion' || a.status === 'fondeada');
+    });
+    return g.batch > 0 ? queue.slice(0, g.batch) : queue;
+  }
+
+  // -------------------------------------------------------------- limpiar
+  /** Deja una cuenta como recién comprada: saldo inicial, sin historial, en evaluación. */
+  resetAccount(id: string) {
+    const a = this.acc(id);
+    const plan = a && planById(a.planId);
+    if (!a || !plan || this.groupOf(id)) return;
+    Object.assign(a, { status: 'evaluacion', start: plan.size, balance: plan.size, floor: plan.size - plan.maxLoss, highEod: plan.size, lastDay: '', daily: {}, position: null, trades: [], fees: 0 });
+    this.state.groups.forEach(g => { const m = g.members[id]; if (m) { m.stopDay = ''; m.stopReason = ''; } });
+    this.log(`${a.id}: cuenta reiniciada`);
+    this.changed();
+  }
+
+  /** Reinicia todas las cuentas (detiene los grupos) y borra el historial de actividad. */
+  resetAllAccounts() {
+    this.state.groups.forEach(g => { g.running = false; g.jet = null; g.trades = 0; g.pnl = 0; g.lastExitT = 0; g.lastNyorDay = ''; });
+    this.state.accounts.forEach(a => this.resetAccount(a.id));
+    this.state.log = ['Todas las cuentas reiniciadas'];
+    this.changed();
+  }
+
+  /** Borra todo Juanitos Funding: cuentas, grupos, gasto e historial (las cuentas reales seguidas se mantienen). */
+  wipeAll() {
+    const keep = { real: this.state.real, source: this.state.source };
+    this.state = { ...emptyState(), ...keep, processedT: this.state.processedT };
+    this.changed();
   }
 
   /** Beneficio del mejor día y beneficio total (para la regla de consistencia). */
@@ -282,6 +337,19 @@ export class Engine {
         this.state.groups.forEach(g => { g.startedAt = Math.min(g.startedAt, last); g.jet = null; });
       }
       if (sim || this.state.processedT === 0 || this.state.processedT > last) this.state.processedT = last;
+      // Con el panel cerrado el bot no operaba: en las velas atrasadas solo se revisan SL/TP de lo abierto,
+      // sin entradas nuevas (las señales empiezan con la siguiente vela en directo).
+      this.state.groups.forEach(g => { if (g.running) { g.startedAt = Math.max(g.startedAt, last); g.jet = null; } });
+      // Posiciones de otra fuente de precio, o con un precio fuera de lugar (más de un 10 %): se anulan.
+      const price = bars[bars.length - 1].c;
+      let foreign = 0;
+      this.state.accounts.forEach(a => {
+        const p = a.position;
+        if (!p) return;
+        if ((p.source && p.source !== this.state.source) || Math.abs(p.entry / price - 1) > 0.1) { a.position = null; foreign++; }
+        else p.source = this.state.source;
+      });
+      if (foreign) this.log(`${foreign} posición(es) anuladas: venían de otra fuente de precio`);
     }
     const start = bars.findIndex(b => b.t > this.state.processedT);
     if (start >= 0) {
@@ -383,7 +451,7 @@ export class Engine {
     if (g.direction === 'largos' && side < 0) return;
     if (g.direction === 'cortos' && side > 0) return;
     let opened = 0;
-    for (const id of g.accountIds) {
+    for (const id of this.activeMembers(g)) {
       const a = this.acc(id);
       const plan = a && planById(a.planId);
       const m = g.members[id];
@@ -391,7 +459,7 @@ export class Engine {
       const qty = Math.max(1, Math.min(m.qty, plan.maxMicros));
       const entry = roundTick(price + side * RULES.slippageTicks * tick);
       a.position = {
-        side, qty, entry, entryT: t, groupId: g.id, strategy: g.strategy,
+        side, qty, entry, entryT: t, groupId: g.id, strategy: g.strategy, source: this.state.source,
         sl: roundTick(entry - side * usdToPts(m.slUsd, qty)),
         tp: roundTick(entry + side * usdToPts(m.tpUsd, qty)),
       };
