@@ -75,8 +75,8 @@ Sección del panel que funciona **sin NinjaTrader**:
   en la tabla). Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
   horario), con la opción de cerrar las posiciones al terminar. CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
-- **Mercado:** widget oficial de TradingView con `CME_MINI:MNQ1!`, solo para ver el precio (el bot no puede leerlo; en TradingView gratuito
-  va con unos 10 min de retraso), y la fuente de precio del bot. Hay cuatro fuentes:
+- **Mercado:** precio del MNQ, enlace a MNQ1! en TradingView para comparar (TradingView no permite incrustar futuros del CME)
+  y la fuente de precio del bot. Hay cuatro fuentes:
   *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`).
   El precio solo se acepta de **una conexión concreta de NinjaTrader** (por defecto `LTTK7X97T4U`, configurable en Mercado);
   si cambia la conexión, el AddOn vuelve a descargar las velas y el panel descarta las antiguas.

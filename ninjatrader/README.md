@@ -23,6 +23,12 @@ que sigue siendo una demo sin conexión.
 
 ## Instalación
 
+**Lo más fácil:** cierra NinjaTrader y haz doble clic en **`instalar-en-ninjatrader.bat`** (en esta carpeta). Copia los
+archivos a la carpeta correcta de NinjaTrader (también si Documentos está en OneDrive) y borra las copias duplicadas tipo
+`CCMarketFeed (1).cs`. Después abre NinjaTrader, pulsa F5 en el NinjaScript Editor y reinicia NinjaTrader.
+
+A mano:
+
 1. Copia **`Strategies/*.cs`** en `Documents\NinjaTrader 8\bin\Custom\Strategies\`.
 2. Copia **`AddOns/*.cs`** (4 archivos) en `Documents\NinjaTrader 8\bin\Custom\AddOns\`.
 3. Abre el NinjaScript Editor y pulsa **F5**. Si sale algún error, manda una captura.
