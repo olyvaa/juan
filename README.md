@@ -41,11 +41,19 @@ Sitio desplegado: https://juan-one-flax.vercel.app
 
 `vercel.json` configura Vite, `npm ci`, `npm run build` y salida `dist`. El despliegue inicial fue manual; la integración automática con GitHub no está configurada. Subir commits no garantiza un despliegue nuevo. La protección de acceso de Vercel puede exigir iniciar sesión.
 
+## NinjaTrader 8 (código real)
+
+La carpeta [`ninjatrader/`](ninjatrader/README.md) contiene código C# que sí se ejecuta dentro de NinjaTrader 8:
+las estrategias CCGoatPro, CCGYR, CCRangOpenNY y CCJetF1, un laboratorio de optimización y el AddOn
+**Command Pro Clone**, con un panel de estrategias (pausar, cerrar, kill switch) y un copiador de cuentas
+maestra → seguidoras. Es independiente de la web; la web sigue sin conexión con NinjaTrader.
+
 ## Organización
 
 - `src/App.tsx`: navegación, portfolio y perfiles.
 - `src/AccountGroups.tsx`: administración y persistencia de grupos.
 - `src/TradingPanel.tsx`: terminal simulada y selector de grupos.
 - `src/index.css`: estilos y adaptación a móvil.
+- `ninjatrader/`: estrategias y AddOn C# para NinjaTrader 8 (ver su README).
 
 Los archivos de componentes, contexto y datos de la antigua tienda siguen presentes, pero el dashboard actual no los usa.

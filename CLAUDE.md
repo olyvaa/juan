@@ -12,6 +12,10 @@ Esta versión es un prototipo frontend. NO tiene conexión a NinjaTrader, cotiza
 
 Los grupos se identifican por ID; dos grupos pueden tener los mismos miembros. No inferir el grupo seleccionado comparando sus miembros. Los multiplicadores de contratos se configuran por cuenta. Evitar órdenes duplicadas por combinar entradas manuales y copia automática en una futura implementación.
 
+## Código NinjaTrader (`ninjatrader/`)
+
+C# 7.3 para NinjaTrader 8: estrategias en `ninjatrader/Strategies` y AddOn (panel + copiador) en `ninjatrader/AddOns`. No se puede compilar aquí contra NinjaTrader real; se verifica contra una imitación de la API y el usuario compila con F5. No declarar que funciona en NinjaTrader sin su confirmación. El copiador copia la posición neta con órdenes a mercado y no copia stops pendientes: mantener esa advertencia. La web (`src/`) sigue siendo demo y no está conectada a este código.
+
 ## Desarrollo
 
 React, TypeScript, Vite, CSS y lucide-react. No hay suite automatizada persistida. La compilación verificada es `npm run build`. Ejecutar ESLint sobre los archivos cambiados y comprobar funcionalmente la interacción afectada; no declarar comprobaciones no ejecutadas. Hay importaciones sin usar heredadas en la antigua tienda y una advertencia de Fast Refresh por la exportación compartida de AccountGroups.tsx.
