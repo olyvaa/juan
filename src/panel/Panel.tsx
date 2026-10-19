@@ -403,7 +403,7 @@ function Resultados() {
             <span className="row-title">Ninguna combinación estable</span>
             <span className="row-sub">3.600 combinaciones Ruptura/Fade × ticks × TP × SL: ninguna con profit factor &gt; 1,2 en enero–junio y en julio–octubre.</span>
           </div>
-          <StatusPill kind="bad">No recomendada</StatusPill>
+          <StatusPill kind="neutral">Laboratorio</StatusPill>
         </div>
       </Section>
     </>

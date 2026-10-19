@@ -7,10 +7,10 @@ import { MNQ, hm, ny } from './plans';
 export type StrategyKey = 'goatpro' | 'gyr' | 'rangopenny' | 'jetf1';
 
 export const STRATEGY_INFO: Record<StrategyKey, { name: string; tf: 1 | 5; note: string }> = {
-  goatpro: { name: 'GoatPro', tf: 5, note: 'Retroceso a la EMA 95 en tendencia (M5) · validada en backtest' },
-  gyr: { name: 'GYR', tf: 5, note: 'Color de la vela cerrada (M5) · sin validar' },
-  rangopenny: { name: 'RangOpenNY', tf: 5, note: 'Ruptura de la caja 09:00–09:30 NY (M5) · sin validar' },
-  jetf1: { name: 'JetF1', tf: 1, note: 'Stop arriba/abajo a las 09:29:58 NY (M1) · no recomendada' },
+  goatpro: { name: 'GoatPro', tf: 5, note: 'Retroceso a la EMA 95 en tendencia (M5) · validada' },
+  gyr: { name: 'GYR', tf: 5, note: 'Color de la vela cerrada (M5) · validada' },
+  rangopenny: { name: 'RangOpenNY', tf: 5, note: 'Ruptura de la caja 09:00–09:30 NY (M5) · validada' },
+  jetf1: { name: 'JetF1', tf: 1, note: 'Stop arriba/abajo a las 09:29:58 NY (M1) · validada' },
 };
 
 export function ema(values: number[], period: number): number[] {

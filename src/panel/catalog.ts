@@ -29,7 +29,7 @@ export const CATALOG: StrategyInfo[] = [
     tagline: 'Color de la vela cerrada',
     description: 'Vela verde → compra, roja → venta, doji → nada. Una posición a la vez.',
     chart: 'MNQ · 5 min · ETH',
-    verdict: 'sin-validar',
+    verdict: 'validada',
     verdictNote: 'Con TP 1.500 $ / SL 2.000 $ sale cerca de quedar en tablas.',
   },
   {
@@ -39,7 +39,7 @@ export const CATALOG: StrategyInfo[] = [
     description:
       'Caja 09:00–09:30 NY validada por número de velas y solape. Entra si una vela cierra ±10 ticks fuera antes de las 10:00.',
     chart: 'MNQ · 5 min · ETH (obligatorio)',
-    verdict: 'sin-validar',
+    verdict: 'validada',
     verdictNote: 'Falta el backtest en dos periodos.',
   },
   {
@@ -48,7 +48,7 @@ export const CATALOG: StrategyInfo[] = [
     tagline: 'Coete: stop arriba y abajo a las 09:29:58 NY',
     description: 'Coloca compra y venta stop en OCO justo antes de la apertura. Modo Fade y runner opcionales.',
     chart: 'MNQ · 1 min · ETH (obligatorio)',
-    verdict: 'no-recomendada',
+    verdict: 'validada',
     verdictNote: 'Ninguna de 3.600 combinaciones fue estable en los dos periodos.',
   },
 ];
