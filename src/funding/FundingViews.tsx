@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
-import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
+import { DEFAULT_SCHEDULE, getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member, type Schedule } from './engine';
 import { SOURCES, connectionMatches } from './market';
 import type { AccountInfo } from '../panel/api';
 import { PLANS, RULES, fmtNy, planById, tradingDay, type Plan } from './plans';
@@ -285,7 +285,7 @@ const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'ambas', label: 'Ambas' }, { id: 'largos', label: 'Solo largos' }, { id: 'cortos', label: 'Solo cortos' },
 ];
 
-type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number; tf: number };
+type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number; tf: number; schedule: Schedule };
 
 const TIMEFRAMES = [1, 3, 5, 15];
 const tfOf = (v: FormValues) => (v.strategy === 'jetf1' ? 1 : v.tf);
@@ -306,10 +306,10 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
     if (!v.name.trim()) { notify('Ponle un nombre al grupo', true); return; }
     if (v.accountIds.length === 0) { notify('Elige al menos una cuenta', true); return; }
     if (editing) {
-      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch, tf: tfOf(v) });
+      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch, tf: tfOf(v), schedule: v.schedule });
       notify(`Grupo "${v.name.trim()}" actualizado`);
     } else {
-      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch, tf: tfOf(v) });
+      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch, tf: tfOf(v), schedule: v.schedule });
       notify(`Grupo "${v.name.trim()}" creado. Ajusta cada cuenta en la tabla y pulsa Activar.`);
     }
     onDone();
@@ -341,12 +341,39 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
           {v.strategy === 'goatpro' && v.tf !== 5 && <span className="muted">GoatPro se probó con velas de 5 minutos; con otra vela cambian sus resultados.</span>}
         </div>
       )}
+      <div className="field"><span>Horario (hora de Nueva York)</span>
+        <div className="schedule-row">
+          <label className="inline-check">
+            <Toggle on={v.schedule.on} label="Usar horario" onChange={on => set({ schedule: { ...v.schedule, on } })} />
+            <span>{v.schedule.on ? 'Con horario' : 'Sin horario (opera siempre)'}</span>
+          </label>
+          {v.schedule.on && (
+            <>
+              <label className="inline-check"><span>De</span>
+                <input className="input time" type="time" aria-label="Hora de inicio (NY)" value={v.schedule.start} onChange={ev => set({ schedule: { ...v.schedule, start: ev.target.value || '09:30' } })} />
+              </label>
+              <label className="inline-check"><span>a</span>
+                <input className="input time" type="time" aria-label="Hora de fin (NY)" value={v.schedule.end} onChange={ev => set({ schedule: { ...v.schedule, end: ev.target.value || '16:00' } })} />
+              </label>
+              <label className="inline-check">
+                <Toggle on={v.schedule.flatten} label="Cerrar posiciones al terminar el horario" onChange={flatten => set({ schedule: { ...v.schedule, flatten } })} />
+                <span>Cerrar posiciones al terminar</span>
+              </label>
+            </>
+          )}
+        </div>
+        <span className="muted">
+          {v.schedule.on
+            ? `Solo abre operaciones entre las ${v.schedule.start} y las ${v.schedule.end} NY (en España, normalmente 6 horas más). ${v.schedule.flatten ? 'A la hora de fin cierra lo que esté abierto.' : 'Lo abierto sigue con su SL/TP al terminar.'}`
+            : 'Opera a cualquier hora en la que la estrategia dé señal. Siempre cierra a las 16:55 NY.'}
+        </span>
+      </div>
       <div className="field"><span>Cómo operan las cuentas</span>
         <div className="segmented wide" role="radiogroup" aria-label="Cómo operan las cuentas">
           {BATCHES.map(b => <button key={b.v} type="button" role="radio" aria-checked={v.batch === b.v} className={v.batch === b.v ? 'on' : ''} onClick={() => set({ batch: b.v })}>{b.label}</button>)}
         </div>
         <span className="muted">
-          {v.batch === 0 ? 'Todas las cuentas reciben cada señal.' : `Solo operan ${v.batch === 1 ? 'la primera cuenta' : `las ${v.batch} primeras`} de la lista. Cuando una supera la evaluación o se quema, entra la siguiente. El orden se cambia con las flechas de la tabla.`}
+          {v.batch === 0 ? 'Todas las cuentas reciben cada señal.' : `${v.batch === 1 ? 'Solo opera la primera cuenta' : `Solo operan las ${v.batch} primeras cuentas`} de la lista. Cuando una supera la evaluación o se quema, entra la siguiente. El orden se cambia con las flechas de la tabla.`}
         </span>
       </div>
       {!editing && (
@@ -436,6 +463,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
           <span>{info.name} · MNQ · M{g.tf}</span>
           <span>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
           <span>{batchLabel(g.batch)}</span>
+          <span>{g.schedule?.on ? `${g.schedule.start}–${g.schedule.end} NY${g.schedule.flatten ? ' · cierra al final' : ''}` : 'Sin horario'}</span>
           <span>{g.accountIds.length} ctas</span>
           <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
         </div>
@@ -455,7 +483,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
 
       {editing && !g.running && (
         <GroupForm e={e} editing={g} notify={notify} onDone={() => setEditing(false)}
-          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch, tf: g.tf }} />
+          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch, tf: g.tf, schedule: g.schedule || { ...DEFAULT_SCHEDULE } }} />
       )}
 
       {open && (
@@ -540,7 +568,7 @@ export function Grupos({ ask, notify }: Props) {
       {creating && (
         <Section title="Nuevo grupo">
           <GroupForm e={e} notify={notify} onDone={() => setCreating(false)}
-            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0, tf: 5 }} />
+            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0, tf: 5, schedule: { ...DEFAULT_SCHEDULE } }} />
         </Section>
       )}
       {e.state.groups.map(g => <GroupMonitor key={g.id} g={g} e={e} ask={ask} notify={notify} />)}

@@ -25,6 +25,18 @@ export type Account = {
   daily: Record<string, number>; position: Position | null; trades: Trade[]; fees: number;
 };
 
+/** Horario del grupo en hora de Nueva York. Sin horario = opera siempre (salvo el cierre de las 16:55). */
+export type Schedule = { on: boolean; start: string; end: string; flatten: boolean };
+export const DEFAULT_SCHEDULE: Schedule = { on: false, start: '09:30', end: '16:00', flatten: false };
+
+/** ¿Está el minuto NY dentro del horario? Admite horarios que cruzan medianoche (p. ej. 18:00 → 16:00). */
+export function inSchedule(sc: Schedule | undefined, nyMinutes: number) {
+  if (!sc || !sc.on) return true;
+  const a = hm(sc.start), b = hm(sc.end);
+  if (a === b) return true;
+  return a < b ? nyMinutes >= a && nyMinutes < b : nyMinutes >= a || nyMinutes < b;
+}
+
 /** Configuración de cada cuenta dentro de un grupo (editable en la tabla del grupo). */
 export type Member = {
   qty: number; tpUsd: number; slUsd: number;
@@ -42,6 +54,7 @@ export type Group = {
   qty: number; tpUsd: number; slUsd: number; direction: Direction;   // valores por defecto para cuentas nuevas
   members: Record<string, Member>;
   tf: number;         // minutos por vela de la estrategia (JetF1 siempre 1)
+  schedule: Schedule; // horario de operación (o sin horario)
   batch: number;      // 0 = todas las cuentas a la vez; N = solo N a la vez (en orden): cuando una supera o se quema, entra la siguiente
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
@@ -78,6 +91,7 @@ function loadState(): State {
         g.members = g.members || {};
         g.batch = g.batch || 0;
         g.tf = g.tf || (g.strategy === 'jetf1' ? 1 : 5);
+        g.schedule = g.schedule || { ...DEFAULT_SCHEDULE };
         for (const id of g.accountIds) g.members[id] = g.members[id] || newMember(g.qty, g.tpUsd, g.slUsd);
       }
       return s;
@@ -166,7 +180,7 @@ export class Engine {
   }
 
   /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */
-  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number; tf: number }) {
+  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number; tf: number; schedule: Schedule }) {
     const g = this.group(id);
     if (!g || g.running) return;
     const members: Record<string, Member> = {};
@@ -402,12 +416,19 @@ export class Engine {
       }
     }
 
+    // 2c. Horario del grupo: al terminar, cierra sus posiciones si así se ha configurado
+    for (const g of this.state.groups) {
+      if (!g.schedule?.on || !g.schedule.flatten || inSchedule(g.schedule, closeMin)) continue;
+      for (const a of this.state.accounts) if (a.position?.groupId === g.id) this.close(a, b.c, b.t + 60, 'Fin de horario');
+    }
+
     // 3. Cierre obligatorio antes del cierre de sesión
     if (closeMin >= hm(RULES.flattenAt) && closeMin < hm('18:00'))
       for (const a of this.state.accounts) if (a.position) this.close(a, b.c, b.t + 60, 'Cierre de sesión');
 
     // 4. Señales
-    const running = this.state.groups.filter(g => g.running && b.t > g.startedAt);
+    // Solo grupos activos y dentro de su horario (se mira la hora de cierre de la vela)
+    const running = this.state.groups.filter(g => g.running && b.t > g.startedAt && inSchedule(g.schedule, closeMin));
     if (running.length === 0) return;
 
     for (const g of running.filter(x => x.strategy === 'jetf1')) this.jetF1(g, b, day);

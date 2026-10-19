@@ -72,7 +72,8 @@ Sección del panel que funciona **sin NinjaTrader**:
   (objetivo del día), TP $ y SL $, más un interruptor OPS. Activar / Detener / Editar / Eliminar. Con el grupo activo, la
   edición se bloquea. Una cuenta solo puede estar en un grupo activo. El grupo opera con **todas las cuentas a la vez** o
   **una a una** (o 2/3 a la vez): en ese modo, cuando una cuenta supera o se quema, entra la siguiente del orden (flechas
-  en la tabla). Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min). CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
+  en la tabla). Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
+  horario), con la opción de cerrar las posiciones al terminar. CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
 - **Mercado:** widget oficial de TradingView con `CME_MINI:MNQ1!`, solo para ver el precio (el bot no puede leerlo; en TradingView gratuito
   va con unos 10 min de retraso), y la fuente de precio del bot. Hay cuatro fuentes:

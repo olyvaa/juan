@@ -370,6 +370,8 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 .add-real { flex-wrap: wrap; background: var(--surface-2); }
 .row .meter { margin-top: 8px; max-width: 360px; }
 .field.grow { flex: 1 1 240px; }
+.schedule-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.input.time { width: 110px; }
 
 .groups-intro { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 20px; }
 .groups-intro p { margin: 0; flex: 1 1 360px; font-size: 13px; }
