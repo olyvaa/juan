@@ -95,8 +95,10 @@ namespace NinjaTrader.NinjaScript.AddOns
 		{
 			lock (sync)
 			{
-				if (sender != request) return;
-				for (int i = e.MinIndex; i <= e.MaxIndex; i++) Store(e.BarsSeries, i);
+				// Las velas actualizadas estan en request.Bars (e.BarsSeries es de otro tipo).
+				if (request == null || request.Bars == null) return;
+				Bars series = request.Bars;
+				for (int i = Math.Max(0, e.MinIndex); i <= e.MaxIndex && i < series.Count; i++) Store(series, i);
 				lastUpdate = DateTime.Now;
 			}
 		}
