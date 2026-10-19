@@ -18,7 +18,8 @@ export const SOURCES: { id: SourceId; label: string; note: string }[] = [
   { id: 'sim-fast', label: 'Simulado rápido', note: 'Mercado inventado 60× más rápido: un día en 24 minutos.' },
 ];
 
-export type MarketStatus = { source: SourceId; ok: boolean; message: string; updated: number };
+export type MarketStatus = { source: SourceId; ok: boolean; message: string; updated: number; warning?: string };
+export type NtConnection = { name: string; status: string; price: string };
 
 type Listener = () => void;
 
@@ -66,6 +67,7 @@ class SimGenerator {
 // ------------------------------------------------------------------ mercado
 export class Market {
   bars: Bar[] = [];          // velas de 1 min CERRADAS
+  ntConnections: NtConnection[] = [];
   last = 0;                  // último precio (incluye la vela en formación)
   status: MarketStatus;
   private listeners = new Set<Listener>();
@@ -117,8 +119,8 @@ export class Market {
     this.sim = null;
   }
 
-  private setStatus(ok: boolean, message: string) {
-    this.status = { source: this.source, ok, message, updated: Date.now() };
+  private setStatus(ok: boolean, message: string, warning?: string) {
+    this.status = { source: this.source, ok, message, updated: Date.now(), warning };
     this.emit();
   }
 
@@ -130,15 +132,23 @@ export class Market {
       const since = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
       const res = await fetch(`${BRIDGE_URL}/api/market?instrument=${encodeURIComponent(NT_INSTRUMENT)}&since=${since}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { loaded: boolean; error: string | null; last: number; bars: number[][] };
+      const d = await res.json() as { loaded: boolean; error: string | null; last: number; bars: number[][]; connections?: NtConnection[] };
       if (gen !== this.generation) return;
+      this.ntConnections = d.connections || [];
+      const live = this.ntConnections.filter(c => c.price === 'Connected');
+      const simulated = live.filter(c => /simulat|playback|replay/i.test(c.name));
+      const warning = live.length === 0
+        ? 'NinjaTrader no tiene ninguna conexión de datos activa: el precio puede estar parado o ser antiguo.'
+        : simulated.length === live.length
+          ? `NinjaTrader está conectado a "${simulated.map(c => c.name).join(', ')}": esos precios son INVENTADOS por NinjaTrader, no el MNQ real. Conecta tu cuenta del bróker (Lucid / Rithmic / Tradovate…).`
+          : undefined;
       if (d.error) { this.setStatus(false, d.error); return; }
       if (!d.loaded) { this.setStatus(false, 'Cargando datos de NinjaTrader…'); return; }
       const lastT = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
       for (const [t, o, h, l, c] of d.bars) if (t > lastT) this.bars.push({ t, o, h, l, c });
       if (this.bars.length > 8000) this.bars.splice(0, this.bars.length - 8000);
       if (d.last) this.last = d.last;
-      this.setStatus(true, `${NT_INSTRUMENT} en tiempo real · NinjaTrader`);
+      this.setStatus(true, `${NT_INSTRUMENT} en tiempo real · NinjaTrader`, warning);
     } catch {
       if (gen === this.generation) this.setStatus(false, 'NinjaTrader no está abierto o no tiene el AddOn (localhost:8793)');
     } finally {

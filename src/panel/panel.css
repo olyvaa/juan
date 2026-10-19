@@ -358,6 +358,7 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 .market-price span { font-weight: 600; font-variant-numeric: tabular-nums; }
 .segmented.wide { width: 100%; max-width: 520px; }
 .tv-quote { min-height: 126px; padding: 6px 10px; }
+.conn-line { margin: -8px 0 18px; font-size: 13px; }
 .group-foot a { color: var(--accent-ink); }
 .segmented.wide button { padding: 6px 8px; font-size: 13px; }
 

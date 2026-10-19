@@ -114,6 +114,19 @@ namespace NinjaTrader.NinjaScript.AddOns
 				  .Append(",\"loaded\":").Append(loaded ? "true" : "false")
 				  .Append(",\"error\":").Append(Json.Str(error))
 				  .Append(",\"updated\":").Append(Json.Str(lastUpdate == DateTime.MinValue ? "" : lastUpdate.ToString("s")));
+				// Conexiones activas: permiten ver si los datos son reales o del Simulated Data Feed
+				sb.Append(",\"connections\":[");
+				List<Connection> conns;
+				lock (Connection.Connections) conns = Connection.Connections.ToList();
+				bool firstConn = true;
+				foreach (Connection c in conns)
+				{
+					string cname = "", status = "", price = "";
+					try { cname = c.Options.Name; status = c.Status.ToString(); price = c.PriceStatus.ToString(); } catch { }
+					if (!firstConn) sb.Append(','); firstConn = false;
+					sb.Append("{\"name\":").Append(Json.Str(cname)).Append(",\"status\":").Append(Json.Str(status)).Append(",\"price\":").Append(Json.Str(price)).Append('}');
+				}
+				sb.Append(']');
 				List<KeyValuePair<long, double[]>> all = bars.ToList();
 				KeyValuePair<long, double[]>? forming = all.Count > 0 ? all[all.Count - 1] : (KeyValuePair<long, double[]>?)null;
 				sb.Append(",\"last\":").Append(forming.HasValue ? Json.Num(forming.Value.Value[3]) : "0");

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
 import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
 import { SOURCES } from './market';
 import type { AccountInfo } from '../panel/api';
@@ -586,10 +586,19 @@ export function Mercado() {
         </div>
         <div className="market-controls">
           {m.status.ok
-            ? <StatusPill kind={e.state.source === 'nt' ? 'good' : e.state.source === 'yahoo' ? 'warn' : 'neutral'}>{m.status.message}</StatusPill>
+            ? <StatusPill kind={m.status.warning ? 'bad' : e.state.source === 'nt' ? 'good' : e.state.source === 'yahoo' ? 'warn' : 'neutral'}>{m.status.message}</StatusPill>
             : <StatusPill kind="bad">{m.status.message}</StatusPill>}
         </div>
       </div>
+
+      {e.state.source === 'nt' && m.status.warning && (
+        <div className="callout"><AlertTriangle size={18} /><div><b>Precio no fiable.</b> {m.status.warning}</div></div>
+      )}
+      {e.state.source === 'nt' && m.ntConnections.length > 0 && (
+        <p className="muted conn-line">
+          Conexiones de NinjaTrader: {m.ntConnections.map(c => `${c.name || '(sin nombre)'} · datos ${c.price === 'Connected' ? 'conectados' : c.price.toLowerCase() || '—'}`).join(' | ')}
+        </p>
+      )}
 
       <Section
         title="TradingView · CME_MINI:MNQ1!"
