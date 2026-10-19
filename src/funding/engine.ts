@@ -6,6 +6,7 @@ import { JET_TICKS, goatProSignal, gyrSignal, isJetAnchorBar, rangOpenSignal, ty
 
 export type AccountStatus = 'evaluacion' | 'superada' | 'fondeada' | 'quemada';
 export type Direction = 'ambas' | 'largos' | 'cortos';
+export type GroupMode = 'all' | 'eval' | 'rot';
 
 export type Position = {
   side: 1 | -1; qty: number; entry: number; sl: number; tp: number;
@@ -56,7 +57,11 @@ export type Group = {
   tf: number;         // minutos por vela de la estrategia (JetF1 siempre 1)
   schedule: Schedule; // horario de operación (o sin horario)
   lastCheck?: { t: number; text: string };   // qué vio el bot en la última vela cerrada y qué hizo
-  batch: number;      // 0 = todas las cuentas a la vez; N = solo N a la vez (en orden): cuando una supera o se quema, entra la siguiente
+  /** all = todas a la vez · eval = N a la vez hasta que superen o se quemen · rot = rotación: cada operación va a las N siguientes */
+  mode: GroupMode;
+  batch: number;      // N cuentas a la vez (modos eval y rot)
+  loop: boolean;      // rotación: al acabar la lista vuelve a empezar (si no, el grupo se detiene)
+  rotPos: number;     // rotación: posición en la lista de la siguiente cuenta
   running: boolean; startedAt: number; trades: number; pnl: number;
   lastExitT: number; lastNyorDay: string;
   jet: { day: string; up: number; down: number; expires: number } | null;
@@ -91,6 +96,9 @@ function loadState(): State {
       for (const g of s.groups) {
         g.members = g.members || {};
         g.batch = g.batch || 0;
+        g.mode = g.mode || (g.batch > 0 ? 'eval' : 'all');
+        g.loop = !!g.loop;
+        g.rotPos = g.rotPos || 0;
         g.tf = g.tf || (g.strategy === 'jetf1' ? 1 : 5);
         g.schedule = g.schedule || { ...DEFAULT_SCHEDULE };
         for (const id of g.accountIds) g.members[id] = g.members[id] || newMember(g.qty, g.tpUsd, g.slUsd);
@@ -172,21 +180,21 @@ export class Engine {
   }
 
   // -------------------------------------------------------------- grupos
-  createGroup(g: Omit<Group, 'id' | 'running' | 'startedAt' | 'trades' | 'pnl' | 'lastExitT' | 'lastNyorDay' | 'jet' | 'members'>) {
+  createGroup(g: Omit<Group, 'id' | 'running' | 'startedAt' | 'trades' | 'pnl' | 'lastExitT' | 'lastNyorDay' | 'jet' | 'members' | 'rotPos'>) {
     this.state.seq++;
     const members: Record<string, Member> = {};
     for (const id of g.accountIds) members[id] = newMember(g.qty, g.tpUsd, g.slUsd);
-    this.state.groups.push({ ...g, members, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
+    this.state.groups.push({ ...g, members, rotPos: 0, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
     this.changed();
   }
 
   /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */
-  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; batch: number; tf: number; schedule: Schedule }) {
+  updateGroup(id: string, patch: { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; mode: GroupMode; batch: number; loop: boolean; tf: number; schedule: Schedule }) {
     const g = this.group(id);
     if (!g || g.running) return;
     const members: Record<string, Member> = {};
     for (const a of patch.accountIds) members[a] = g.members[a] || newMember(g.qty, g.tpUsd, g.slUsd);
-    Object.assign(g, patch, { members });
+    Object.assign(g, patch, { members, rotPos: 0 });
     this.changed();
   }
 
@@ -250,6 +258,7 @@ export class Engine {
     if (usable.length === 0) return 'El grupo no tiene cuentas activas (en evaluación o fondeadas, con OPS encendido).';
     const busy = usable.find(a => this.state.groups.some(o => o.running && o.id !== g.id && o.accountIds.includes(a.id)));
     if (busy) return `${busy.id} ya está operando en otro grupo. Una cuenta solo puede estar en un grupo activo.`;
+    if (g.mode === 'rot' && this.activeMembers(g).length === 0) g.rotPos = 0;   // rotación terminada: empieza otra vez
     g.running = true;
     g.startedAt = this.market.bars.length ? this.market.bars[this.market.bars.length - 1].t : 0;
     g.jet = null;
@@ -319,13 +328,41 @@ export class Engine {
     return p && this.priced(a) ? p.side * (this.market.last - p.entry) * MNQ.pointValue * p.qty : 0;
   }
 
-  /** Cuentas del grupo que pueden operar ahora (modo todas a la vez o N a la vez, en orden). */
+  private usable(g: Group, id: string) {
+    const a = this.acc(id), m = g.members[id];
+    return !!a && !!m && m.enabled && (a.status === 'evaluacion' || a.status === 'fondeada');
+  }
+
+  /** Cuentas del grupo que recibirán la próxima señal, según el modo. */
   activeMembers(g: Group): string[] {
-    const queue = g.accountIds.filter(id => {
-      const a = this.acc(id), m = g.members[id];
-      return !!a && !!m && m.enabled && (a.status === 'evaluacion' || a.status === 'fondeada');
-    });
-    return g.batch > 0 ? queue.slice(0, g.batch) : queue;
+    const n = Math.max(1, g.batch || 1);
+    if ((g.mode || 'all') === 'all') return g.accountIds.filter(id => this.usable(g, id));
+    if (g.mode === 'eval') return g.accountIds.filter(id => this.usable(g, id)).slice(0, n);
+    // Rotación: las N siguientes desde la posición actual (vuelve al principio solo si loop)
+    const out: string[] = [];
+    const len = g.accountIds.length;
+    for (let k = 0; k < len && out.length < n; k++) {
+      const idx = (g.rotPos || 0) + k;
+      if (idx >= len && !g.loop) break;
+      const id = g.accountIds[idx % len];
+      if (this.usable(g, id) && !out.includes(id)) out.push(id);
+    }
+    return out;
+  }
+
+  /** Orden de espera para mostrar "EN COLA n" (cuentas que entrarán después de las activas). */
+  queueOf(g: Group): string[] {
+    const active = this.activeMembers(g);
+    if (g.mode === 'all') return [];
+    if (g.mode === 'eval') return g.accountIds.filter(id => this.usable(g, id) && !active.includes(id));
+    const len = g.accountIds.length, out: string[] = [];
+    for (let k = 0; k < len; k++) {
+      const idx = (g.rotPos || 0) + k;
+      if (idx >= len && !g.loop) break;
+      const id = g.accountIds[idx % len];
+      if (this.usable(g, id) && !active.includes(id) && !out.includes(id)) out.push(id);
+    }
+    return out;
   }
 
   // -------------------------------------------------------------- limpiar
@@ -396,7 +433,27 @@ export class Engine {
       for (let i = start; i < bars.length; i++) this.onBar(bars, i);
       this.state.processedT = last;
     }
+    this.liveExits();
     this.changed();
+  }
+
+  /** TP, SL y pérdida máxima con CADA precio (no solo al cierre de la vela), como haría el bróker. */
+  private liveExits() {
+    const px = this.market.last;
+    if (!(px > 0)) return;
+    const t = this.nowT();
+    for (const a of this.state.accounts) {
+      const p = a.position;
+      if (!p || !this.priced(a)) continue;
+      if (p.side > 0 ? px <= p.sl : px >= p.sl) { this.close(a, p.sl - p.side * RULES.slippageTicks * tick, t, 'Stop loss'); continue; }
+      if (p.side > 0 ? px >= p.tp : px <= p.tp) { this.close(a, p.tp, t, 'Take profit'); continue; }
+      const fees = RULES.commissionPerMicroRT * p.qty;
+      const eq = a.balance + p.side * (px - p.entry) * MNQ.pointValue * p.qty - fees;
+      if (eq <= a.floor) {
+        const liq = p.entry + p.side * ((a.floor - a.balance + fees) / (MNQ.pointValue * p.qty));
+        this.close(a, p.side > 0 ? Math.floor(liq / tick) * tick : Math.ceil(liq / tick) * tick, t, 'Pérdida máxima');
+      }
+    }
   }
 
   private onBar(bars: Bar[], i: number) {
@@ -524,8 +581,17 @@ export class Engine {
     this.blockedLogged = false;
     if (g.direction === 'largos' && side < 0) return 'ignorada: el grupo es solo largos';
     if (g.direction === 'cortos' && side > 0) return 'ignorada: el grupo es solo cortos';
+    // Rotación: una operación cada vez; la siguiente cuenta entra cuando se cierra la anterior
+    if (g.mode === 'rot' && this.state.accounts.some(a => a.position?.groupId === g.id))
+      return 'no abre: rotación, esperando a que se cierre la operación en curso';
+    const targets = this.activeMembers(g);
+    if (g.mode === 'rot' && targets.length === 0) {
+      g.running = false;
+      this.log(`${g.name}: rotación completada, no quedan cuentas en la lista. Grupo detenido`, t);
+      return 'no abre: rotación completada (grupo detenido)';
+    }
     let opened = 0, busy = 0, stopped = 0;
-    for (const id of this.activeMembers(g)) {
+    for (const id of targets) {
       const a = this.acc(id);
       const plan = a && planById(a.planId);
       const m = g.members[id];
@@ -534,14 +600,21 @@ export class Engine {
       if (!a || !plan || !m || !m.enabled || m.stopDay === day || a.position || (a.status !== 'evaluacion' && a.status !== 'fondeada')) continue;
       const qty = Math.max(1, Math.min(m.qty, plan.maxMicros));
       const entry = roundTick(price + side * RULES.slippageTicks * tick);
+      // TP y SL en $ NETOS (con la comisión incluida): TP 650 $ = el resultado final es +650 $.
+      const fees = RULES.commissionPerMicroRT * qty;
       a.position = {
         side, qty, entry, entryT: t, groupId: g.id, strategy: g.strategy, source: this.state.source,
-        sl: roundTick(entry - side * usdToPts(m.slUsd, qty)),
-        tp: roundTick(entry + side * usdToPts(m.tpUsd, qty)),
+        sl: roundTick(entry - side * usdToPts(Math.max(1, m.slUsd - fees), qty)),
+        tp: roundTick(entry + side * Math.ceil((m.tpUsd + fees) / (qty * MNQ.pointValue) / tick) * tick),
       };
       opened++;
     }
     if (opened) this.log(`${g.name}: ${side > 0 ? 'COMPRA' : 'VENTA'} en ${opened} cuenta(s) @ ${roundTick(price)}`, t);
+    if (opened && g.mode === 'rot') {
+      // Avanza la rotación hasta después de la última cuenta usada
+      const next = g.accountIds.indexOf(targets[targets.length - 1]) + 1;
+      g.rotPos = g.loop ? next % g.accountIds.length : next;
+    }
     if (opened) return `abierta en ${opened} cuenta(s)`;
     if (busy) return 'no abre: la cuenta activa ya tiene una posición abierta';
     if (stopped) return 'no abre: cuenta parada hoy por PDLL/PDPT';

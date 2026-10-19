@@ -70,9 +70,10 @@ Sección del panel que funciona **sin NinjaTrader**:
 - **Grupos:** estrategia (GoatPro, GYR, RangOpenNY, JetF1) + cuentas, con una tabla de monitorización por cuenta: estado,
   posición, balance, PnL del día, último PnL, abierto y casillas editables de CT, PDLL (pérdida del día), PDPT
   (objetivo del día), TP $ y SL $, más un interruptor OPS. Activar / Detener / Editar / Eliminar. Con el grupo activo, la
-  edición se bloquea. Una cuenta solo puede estar en un grupo activo. El grupo opera con **todas las cuentas a la vez** o
-  **una a una** (o 2/3 a la vez): en ese modo, cuando una cuenta supera o se quema, entra la siguiente del orden (flechas
-  en la tabla). Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
+  edición se bloquea. Una cuenta solo puede estar en un grupo activo. Modos: **todas a la vez**, **rotación** (cada operación
+  va a la(s) siguiente(s) cuenta(s) de la lista cuando se cierra la anterior; al acabar la lista se detiene o vuelve a empezar)
+  y **una hasta superar** (la misma cuenta hasta que supere o se queme). El orden se cambia con las flechas de la tabla.
+  TP y SL en $ son netos de comisión y se comprueban con cada precio, no solo al cierre de la vela. Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
   horario), con la opción de cerrar las posiciones al terminar. CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
 - **Mercado:** precio del MNQ, enlace a MNQ1! en TradingView para comparar (TradingView no permite incrustar futuros del CME)

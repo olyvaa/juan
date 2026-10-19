@@ -80,6 +80,8 @@ export class Market {
   trusted = true;
   private refAsked = 0;
   private ntGen = -1;
+  private lastPriceSeen = 0;
+  private lastPriceChangeAt = 0;
   /** Única conexión de NinjaTrader de la que se acepta el precio (p. ej. la cuenta de Lucid). */
   requiredConnection = '';
   last = 0;                  // último precio (incluye la vela en formación)
@@ -174,9 +176,17 @@ export class Market {
       const lastT = this.bars.length ? this.bars[this.bars.length - 1].t : 0;
       for (const [t, o, h, l, c] of d.bars) if (t > lastT) this.bars.push({ t, o, h, l, c });
       if (this.bars.length > 8000) this.bars.splice(0, this.bars.length - 8000);
-      if (d.last) this.last = d.last;
+      if (d.last) {
+        if (d.last !== this.lastPriceSeen) { this.lastPriceSeen = d.last; this.lastPriceChangeAt = Date.now(); }
+        this.last = d.last;
+      }
       void this.checkReference(gen);
       let w = warning;
+      // El precio se mueve pero no llegan velas cerradas: sin velas nuevas no hay señales
+      const lastClose = this.bars.length ? (this.bars[this.bars.length - 1].t + 60) * 1000 : 0;
+      if (!w && lastClose && Date.now() - this.lastPriceChangeAt < 90000 && Date.now() - lastClose > 180000) {
+        w = `NinjaTrader actualiza el precio pero no cierra velas de 1 minuto (la última cerró hace ${Math.round((Date.now() - lastClose) / 60000)} min). Sin velas nuevas el bot no recibe señales.`;
+      }
       const ref = this.reference;
       if (!w && ref && this.last > 0 && Math.abs(this.last / ref.price - 1) > 0.02) {
         w = `El precio de NinjaTrader (${this.last.toFixed(2)}) no se parece al del MNQ real (~${ref.price.toFixed(2)} según Yahoo). NinjaTrader no está recibiendo datos reales.`;

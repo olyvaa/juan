@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
-import { DEFAULT_SCHEDULE, getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member, type Schedule } from './engine';
+import { DEFAULT_SCHEDULE, getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type GroupMode, type Member, type Schedule } from './engine';
 import { SOURCES, connectionMatches } from './market';
 import type { AccountInfo } from '../panel/api';
 import { PLANS, RULES, fmtNy, planById, tradingDay, type Plan } from './plans';
@@ -285,15 +285,20 @@ const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'ambas', label: 'Ambas' }, { id: 'largos', label: 'Solo largos' }, { id: 'cortos', label: 'Solo cortos' },
 ];
 
-type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; batch: number; tf: number; schedule: Schedule };
+type FormValues = { name: string; strategy: StrategyKey; direction: Direction; accountIds: string[]; qty: number; tp: number; sl: number; mode: GroupMode; batch: number; loop: boolean; tf: number; schedule: Schedule };
 
 const TIMEFRAMES = [1, 3, 5, 15];
 const tfOf = (v: FormValues) => (v.strategy === 'jetf1' ? 1 : v.tf);
 
-const BATCHES: { v: number; label: string }[] = [
-  { v: 0, label: 'Todas a la vez' }, { v: 1, label: 'Una a una' }, { v: 2, label: '2 a la vez' }, { v: 3, label: '3 a la vez' },
+const MODES: { v: GroupMode; label: string }[] = [
+  { v: 'all', label: 'Todas a la vez' }, { v: 'rot', label: 'Rotación (una por operación)' }, { v: 'eval', label: 'Una hasta superar' },
 ];
-const batchLabel = (n: number) => BATCHES.find(b => b.v === n)?.label || `${n} a la vez`;
+const modeLabel = (g: Group) => {
+  const n = Math.max(1, g.batch || 1);
+  if (g.mode === 'rot') return `Rotación · ${n} por operación${g.loop ? ' · en bucle' : ''}`;
+  if (g.mode === 'eval') return n === 1 ? 'Una hasta superar' : `${n} hasta superar`;
+  return 'Todas a la vez';
+};
 
 /** Formulario para crear un grupo o editarlo (nombre, estrategia, dirección y cuentas). */
 function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial: FormValues; editing?: Group; onDone: () => void; notify: Props['notify'] }) {
@@ -306,10 +311,10 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
     if (!v.name.trim()) { notify('Ponle un nombre al grupo', true); return; }
     if (v.accountIds.length === 0) { notify('Elige al menos una cuenta', true); return; }
     if (editing) {
-      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, batch: v.batch, tf: tfOf(v), schedule: v.schedule });
+      e.updateGroup(editing.id, { name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, mode: v.mode, batch: Math.max(1, v.batch), loop: v.loop, tf: tfOf(v), schedule: v.schedule });
       notify(`Grupo "${v.name.trim()}" actualizado`);
     } else {
-      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, batch: v.batch, tf: tfOf(v), schedule: v.schedule });
+      e.createGroup({ name: v.name.trim(), strategy: v.strategy, direction: v.direction, accountIds: v.accountIds, qty: Math.min(v.qty, maxQty), tpUsd: v.tp, slUsd: v.sl, mode: v.mode, batch: Math.max(1, v.batch), loop: v.loop, tf: tfOf(v), schedule: v.schedule });
       notify(`Grupo "${v.name.trim()}" creado. Ajusta cada cuenta en la tabla y pulsa Activar.`);
     }
     onDone();
@@ -370,10 +375,23 @@ function GroupForm({ e, initial, editing, onDone, notify }: { e: Engine; initial
       </div>
       <div className="field"><span>Cómo operan las cuentas</span>
         <div className="segmented wide" role="radiogroup" aria-label="Cómo operan las cuentas">
-          {BATCHES.map(b => <button key={b.v} type="button" role="radio" aria-checked={v.batch === b.v} className={v.batch === b.v ? 'on' : ''} onClick={() => set({ batch: b.v })}>{b.label}</button>)}
+          {MODES.map(m => <button key={m.v} type="button" role="radio" aria-checked={v.mode === m.v} className={v.mode === m.v ? 'on' : ''} onClick={() => set({ mode: m.v })}>{m.label}</button>)}
         </div>
+        {v.mode !== 'all' && (
+          <div className="schedule-row">
+            <div className="field"><span>Cuentas por operación</span><Stepper label="Cuentas por operación" value={Math.max(1, v.batch)} min={1} max={10} onChange={n => set({ batch: n })} /></div>
+            {v.mode === 'rot' && (
+              <label className="inline-check">
+                <Toggle on={v.loop} label="Volver a empezar al terminar la lista" onChange={loop => set({ loop })} />
+                <span>{v.loop ? 'Al terminar la lista, vuelve a la primera' : 'Al terminar la lista, el grupo se detiene'}</span>
+              </label>
+            )}
+          </div>
+        )}
         <span className="muted">
-          {v.batch === 0 ? 'Todas las cuentas reciben cada señal.' : `${v.batch === 1 ? 'Solo opera la primera cuenta' : `Solo operan las ${v.batch} primeras cuentas`} de la lista. Cuando una supera la evaluación o se quema, entra la siguiente. El orden se cambia con las flechas de la tabla.`}
+          {v.mode === 'all' && 'Todas las cuentas reciben cada señal.'}
+          {v.mode === 'rot' && `Cada operación la hace${Math.max(1, v.batch) > 1 ? 'n' : ''} la${Math.max(1, v.batch) > 1 ? 's' : ''} siguiente${Math.max(1, v.batch) > 1 ? 's ' + Math.max(1, v.batch) : ''} cuenta${Math.max(1, v.batch) > 1 ? 's' : ''} de la lista. Cuando se cierra, la siguiente señal va a la cuenta siguiente. El orden se cambia con las flechas de la tabla.`}
+          {v.mode === 'eval' && `Solo opera${Math.max(1, v.batch) > 1 ? 'n las ' + Math.max(1, v.batch) + ' primeras cuentas' : ' la primera cuenta'} de la lista, en todas las señales, hasta que supere la evaluación o se queme; entonces entra la siguiente.`}
         </span>
       </div>
       {!editing && (
@@ -431,6 +449,7 @@ function memberState(a: Account, m: Member, today: string, queuePos: number): { 
   if (m.stopDay === today) return { label: m.stopReason, kind: m.stopReason === 'PDPT' ? 'good' : 'bad' };
   if (!m.enabled) return { label: 'OFF', kind: 'neutral' };
   if (queuePos > 0) return { label: `EN COLA ${queuePos}`, kind: 'warn' };
+  if (queuePos < 0) return { label: 'YA OPERÓ', kind: 'neutral' };
   const last = a.trades[0];
   if (last && tradingDay(last.exitT - 60) === today) {
     if (last.reason === 'Take profit') return { label: 'SALIDA TP', kind: 'good' };
@@ -457,7 +476,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
   });
   const info = STRATEGY_INFO[g.strategy];
   const active = e.activeMembers(g);
-  const waiting = g.batch > 0 ? g.accountIds.filter(id => !active.includes(id) && g.members[id]?.enabled && (e.acc(id)?.status === 'evaluacion' || e.acc(id)?.status === 'fondeada')) : [];
+  const waiting = e.queueOf(g);
 
   return (
     <section className="monitor">
@@ -471,7 +490,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
           {g.running ? <StatusPill kind="good">ACTIVO</StatusPill> : <StatusPill kind="neutral">INACTIVO</StatusPill>}
           <span>{info.name} · MNQ · M{g.tf}</span>
           <span>{DIRECTIONS.find(d => d.id === g.direction)?.label}</span>
-          <span>{batchLabel(g.batch)}</span>
+          <span>{modeLabel(g)}</span>
           <span>{g.schedule?.on ? `${g.schedule.start}–${g.schedule.end} NY${g.schedule.flatten ? ' · cierra al final' : ''}` : 'Sin horario'}</span>
           <span>{g.accountIds.length} ctas</span>
           <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
@@ -498,7 +517,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
 
       {editing && !g.running && (
         <GroupForm e={e} editing={g} notify={notify} onDone={() => setEditing(false)}
-          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, batch: g.batch, tf: g.tf, schedule: g.schedule || { ...DEFAULT_SCHEDULE } }} />
+          initial={{ name: g.name, strategy: g.strategy, direction: g.direction, accountIds: g.accountIds, qty: g.qty, tp: g.tpUsd, sl: g.slUsd, mode: g.mode || 'all', batch: Math.max(1, g.batch || 1), loop: !!g.loop, tf: g.tf, schedule: g.schedule || { ...DEFAULT_SCHEDULE } }} />
       )}
 
       {open && (
@@ -517,7 +536,8 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
                 const unreal = e.unrealized(a);
                 const dayPnl = (a.daily[today] || 0) + unreal;
                 const last = a.trades[0];
-                const st = memberState(a, m, today, waiting.indexOf(id) + 1);
+                const qp = waiting.indexOf(id) + 1;
+                const st = memberState(a, m, today, g.mode === 'rot' && !active.includes(id) && qp === 0 && m.enabled ? -1 : qp);
                 const priced = !a.position || e.priced(a);
                 const plan = planById(a.planId)!;
                 const slRisk = m.slUsd >= plan.maxLoss;
@@ -527,7 +547,7 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
                   <tr key={id} className={m.enabled ? '' : 'off'}>
                     <td><span className={`state ${st.kind}`}>{st.label}</span></td>
                     <td className="left">
-                      {g.batch > 0 && !lock && (
+                      {g.mode !== 'all' && !lock && (
                         <span className="order-btns">
                           <button type="button" aria-label={`Subir ${a.id}`} onClick={() => e.moveMember(g.id, id, -1)}><ArrowUp size={12} /></button>
                           <button type="button" aria-label={`Bajar ${a.id}`} onClick={() => e.moveMember(g.id, id, 1)}><ArrowDown size={12} /></button>
@@ -583,7 +603,7 @@ export function Grupos({ ask, notify }: Props) {
       {creating && (
         <Section title="Nuevo grupo">
           <GroupForm e={e} notify={notify} onDone={() => setCreating(false)}
-            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, batch: 0, tf: 5, schedule: { ...DEFAULT_SCHEDULE } }} />
+            initial={{ name: '', strategy: 'goatpro', direction: 'ambas', accountIds: [], qty: 2, tp: 150, sl: 200, mode: 'all', batch: 1, loop: false, tf: 5, schedule: { ...DEFAULT_SCHEDULE } }} />
         </Section>
       )}
       {e.state.groups.map(g => <GroupMonitor key={g.id} g={g} e={e} ask={ask} notify={notify} />)}
