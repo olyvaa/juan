@@ -74,7 +74,8 @@ Sección del panel que funciona **sin NinjaTrader**:
   **una a una** (o 2/3 a la vez): en ese modo, cuando una cuenta supera o se quema, entra la siguiente del orden (flechas
   en la tabla). CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
-- **Mercado:** precio del MNQ y fuente de datos. Hay cuatro fuentes:
+- **Mercado:** widget oficial de TradingView con `CME_MINI:MNQ1!`, solo para ver el precio (el bot no puede leerlo; en TradingView gratuito
+  va con unos 10 min de retraso), y la fuente de precio del bot. Hay cuatro fuentes:
   *Tiempo real (NinjaTrader)*, por defecto, con velas de 1 min de `MNQ 12-26` a través del puente (`/api/market`);
   *MNQ real (Yahoo)*, con unos 10 min de retraso y a través del proxy `/yahoo` de Vite;
   *Simulado*, y *Simulado rápido* (60×).

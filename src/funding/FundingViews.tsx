@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowDown, ArrowUp, Eye, EyeOff, Minus, Pause, Pencil, Play, Plus, RotateCcw, Rocket, ShoppingBag, Trash2, Users, X } from 'lucide-react';
 import { getEngine, type Engine, type Account, type AccountStatus, type Direction, type Group, type Member } from './engine';
 import { SOURCES } from './market';
@@ -533,6 +533,37 @@ export function Grupos({ ask, notify }: Props) {
 }
 
 // ------------------------------------------------------------------ Mercado
+const isDark = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
+
+/** Widget oficial de TradingView (solo para VER el precio; el bot no puede leerlo). */
+function TradingViewQuote({ symbol }: { symbol: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [dark, setDark] = useState(isDark);
+  useEffect(() => {
+    const update = () => setDark(isDark());
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', update);
+    return () => { mo.disconnect(); mq.removeEventListener('change', update); };
+  }, []);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.innerHTML = '<div class="tradingview-widget-container__widget"></div>';
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js';
+    script.async = true;
+    script.innerHTML = JSON.stringify({ symbol, width: '100%', isTransparent: true, colorTheme: dark ? 'dark' : 'light', locale: 'es' });
+    el.appendChild(script);
+    return () => { el.innerHTML = ''; };
+  }, [symbol, dark]);
+  return <div className="tradingview-widget-container tv-quote" ref={box} />;
+}
+
 export function Mercado() {
   const e = useEngine();
   const m = e.market;
@@ -560,7 +591,14 @@ export function Mercado() {
         </div>
       </div>
 
-      <Section title="Fuente de precio" footer={source.note}>
+      <Section
+        title="TradingView · CME_MINI:MNQ1!"
+        footer={<>Widget oficial de TradingView, solo para ver el precio: el bot no puede leerlo. En una cuenta gratuita de TradingView los futuros del CME van con unos 10 minutos de retraso. <a href="https://es.tradingview.com/symbols/CME_MINI-MNQ1%21/" target="_blank" rel="noreferrer">Abrir en TradingView</a></>}
+      >
+        <TradingViewQuote symbol="CME_MINI:MNQ1!" />
+      </Section>
+
+      <Section title="Fuente de precio del bot" footer={source.note}>
         <div className="row">
           <div className="segmented wide" role="radiogroup" aria-label="Fuente de precio">
             {SOURCES.map(s => (
