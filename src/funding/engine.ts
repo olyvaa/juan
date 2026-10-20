@@ -184,8 +184,10 @@ export class Engine {
     this.state.seq++;
     const members: Record<string, Member> = {};
     for (const id of g.accountIds) members[id] = newMember(g.qty, g.tpUsd, g.slUsd);
-    this.state.groups.push({ ...g, members, rotPos: 0, id: `G${this.state.seq}`, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
+    const id = `G${this.state.seq}`;
+    this.state.groups.push({ ...g, members, rotPos: 0, id, running: false, startedAt: 0, trades: 0, pnl: 0, lastExitT: 0, lastNyorDay: '', jet: null });
     this.changed();
+    return id;
   }
 
   /** Editar nombre, estrategia, dirección y cuentas (solo con el grupo detenido). */

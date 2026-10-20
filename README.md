@@ -62,18 +62,22 @@ Sección del panel que funciona **sin NinjaTrader**:
 
 - **Tienda:** compra ficticia de cuentas Flex 25K/50K/100K/150K con las reglas publicadas de LucidFlex: objetivo,
   pérdida máxima con trailing al cierre del día, sin límite diario, consistencia del 50 % y máximo de micros.
+- **Operaciones** (pantalla de inicio): hora local y del CME, estado de la conexión de precio, open ahora, PnL del día,
+  realizado, capital en operativa, grupos activos con su PnL del día y rendimiento de hoy (ganadoras, perdedoras, win rate).
 - **Mis cuentas:** saldo, progreso al objetivo, margen hasta la pérdida máxima y operaciones. Estados: evaluación,
   superada, fondeada y quemada.
 - **Mis cuentas** también muestra las **cuentas de examen reales** de NinjaTrader (las no Sim), con saldo, PnL del día,
   abierto y posiciones que vienen de NinjaTrader en directo. El progreso al objetivo y el suelo de pérdida los calcula el
   panel con las reglas del plan que elijas.
-- **Grupos:** estrategia (GoatPro, GYR, RangOpenNY, JetF1) + cuentas, con una tabla de monitorización por cuenta: estado,
+- **Grupos:** se crean con un asistente de 6 pasos (Nombre, Conexión, Estrategia con activo/temporalidad/dirección,
+  Rotación y horario, Cuentas con Ct/TP/SL obligatorios por cuenta, Confirmar). Solo MNQ por ahora (MES y MYM aparecen
+  desactivados). Cada grupo tiene estrategia (GoatPro, GYR, RangOpenNY, JetF1) + cuentas, con una tabla de monitorización por cuenta: estado,
   posición, balance, PnL del día, último PnL, abierto y casillas editables de CT, PDLL (pérdida del día), PDPT
   (objetivo del día), TP $ y SL $, más un interruptor OPS. Activar / Detener / Editar / Eliminar. Con el grupo activo, la
   edición se bloquea. Una cuenta solo puede estar en un grupo activo. Modos: **todas a la vez**, **rotación** (cada operación
   va a la(s) siguiente(s) cuenta(s) de la lista cuando se cierra la anterior; al acabar la lista se detiene o vuelve a empezar)
   y **una hasta superar** (la misma cuenta hasta que supere o se queme). El orden se cambia con las flechas de la tabla.
-  TP y SL en $ son netos de comisión y se comprueban con cada precio, no solo al cierre de la vela. Cada grupo elige su **vela: 1, 3, 5 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
+  TP y SL en $ son netos de comisión y se comprueban con cada precio, no solo al cierre de la vela. Cada grupo elige su **vela: 1, 3, 5, 10 o 15 min** (JetF1 siempre 1 min) y su **horario** en hora de NY (o sin
   horario), con la opción de cerrar las posiciones al terminar. CT son contratos MNQ (10 CT = 1 lote de NQ). Un SL igual o mayor que la pérdida máxima sale en rojo.
 - **Limpiar:** reiniciar una cuenta o todas (saldo inicial, sin historial) y borrar todo Juanitos Funding.
 - **Mercado:** precio del MNQ, enlace a MNQ1! en TradingView para comparar (TradingView no permite incrustar futuros del CME)

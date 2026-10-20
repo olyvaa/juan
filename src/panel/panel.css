@@ -422,6 +422,132 @@ details.acct .acct-nums { display: flex; gap: 22px; text-align: right; font-vari
 .cell-input:disabled { opacity: 0.6; }
 .monitor-table td.risk .cell-input { border-color: var(--bad-solid); color: var(--bad); background: var(--bad-bg); }
 
+/* ------------------------------------------------------------ asistente de grupo */
+.sheet-backdrop.top { z-index: 55; }
+.wizard {
+  display: flex; flex-direction: column; width: min(840px, 100%); max-height: calc(100vh - 32px);
+  border-radius: 18px; background: var(--surface); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); animation: pop 0.18s ease-out;
+}
+.wz-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+.wz-head h3 { margin: 0; font-size: 17px; }
+.wz-steps { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 22px 0; }
+.wz-step {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border: 0; border-radius: 999px;
+  background: var(--fill); color: var(--ink-2); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.wz-step:disabled { cursor: default; opacity: 0.55; }
+.wz-step.current { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); }
+.wz-step.done { background: var(--good-bg); color: var(--good); }
+.wz-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); font-size: 11px; }
+.wz-step.current .wz-num { background: var(--accent); color: #fff; }
+.wz-step.done .wz-num { background: var(--good); color: #fff; }
+.wz-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px; }
+.wz-card { display: grid; gap: 10px; }
+.wz-card > p { margin: 0; }
+.wz-label { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.wz-label i { color: var(--bad-solid); font-style: normal; }
+.wz-card .input { max-width: none; }
+.wz-options { display: grid; gap: 8px; }
+.wz-option {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 12px;
+  background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); text-align: left; cursor: pointer;
+}
+.wz-option:hover { background: var(--fill); }
+.wz-option.on { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 2px var(--accent); }
+.wz-option b { display: block; font-size: 15px; }
+.wz-option small { display: block; margin-top: 2px; color: var(--ink-2); font-size: 13px; }
+.wz-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--ink-3); }
+.wz-dot.good, .conn-chip.good .wz-dot { background: var(--switch-on); }
+.wz-dot.bad, .conn-chip.bad .wz-dot { background: var(--bad-solid); }
+.wz-sub { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.wz-sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wz-avail { display: flex; flex-wrap: wrap; gap: 6px; }
+.wz-acct {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 0; border-radius: 10px;
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: 13px; cursor: pointer;
+}
+.wz-acct:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.wz-acct small { color: var(--ink-3); }
+.wz-cycle { display: grid; gap: 6px; }
+.wz-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px;
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line);
+}
+.wz-row.incomplete { box-shadow: inset 0 0 0 1px var(--warn); }
+.wz-row-name { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 13px; }
+.wz-row-name b { white-space: nowrap; }
+.wz-sub .stepper { justify-self: start; }
+.wz-row-money { white-space: nowrap; }
+.wz-row-cells { flex-wrap: nowrap; }
+.wz-row-money { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.wz-row-cells, .wz-fill { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cell-field {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 0 0 8px; border-radius: 8px;
+  background: var(--fill); font-size: 12px; font-weight: 700; color: var(--ink-2);
+}
+.cell-field.tp span { color: var(--good); }
+.cell-field.sl span { color: var(--bad); }
+.cell-field input {
+  width: 54px; padding: 6px 8px 6px 2px; border: 0; background: transparent; color: var(--ink);
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+}
+.cell-field input:focus-visible { outline: none; }
+.cell-field:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+.cell-field.bad { background: var(--bad-bg); box-shadow: inset 0 0 0 1px var(--bad-solid); }
+.wz-summary { display: grid; margin: 0; }
+.wz-summary > div { display: grid; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.wz-summary > div:last-child { border-bottom: 0; }
+.wz-summary dt { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.wz-summary dd { margin: 0; font-weight: 600; }
+.wz-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--line); }
+.chip-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.chip-pick button {
+  min-width: 64px; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--fill);
+  color: var(--ink); font-weight: 600; cursor: pointer;
+}
+.chip-pick button.on { background: var(--accent); color: #fff; }
+.chip-pick button:disabled { opacity: 0.4; cursor: not-allowed; }
+.small { font-size: 12px; }
+.warn-text { margin: 0; color: var(--warn); }
+
+/* ------------------------------------------------------------ operaciones */
+.clock-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 8px 14px;
+  border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.clock-bar .tile-label { margin: 0; }
+.ops-greet { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.ops-greet p { margin: 0; font-size: 15px; }
+.conn-chips { display: flex; gap: 6px; }
+.conn-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px;
+  background: var(--surface); box-shadow: var(--shadow); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.conn-chip.good { color: var(--good); }
+.conn-chip.bad { color: var(--bad); }
+.row-btn { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.row-btn:hover { background: var(--surface-2); }
+.row-amount { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
+.ops-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; }
+.tiles.inset.mini { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; border-bottom: 0; }
+.tiles.inset.mini .tile { padding: 10px 12px; }
+.tiles.inset.mini .tile-value { font-size: 20px; }
+.ops-state { display: grid; gap: 10px; justify-items: start; padding: 14px 16px; }
+.ops-state p { margin: 0; }
+.log.compact { max-height: 140px; width: 100%; padding: 0; }
+@media (max-width: 900px) {
+  .ops-grid { grid-template-columns: minmax(0, 1fr); }
+  .tiles.inset.mini { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .wizard { max-height: calc(100vh - 16px); }
+  .wz-head, .wz-body, .wz-foot { padding-left: 16px; padding-right: 16px; }
+  .wz-steps { padding: 12px 16px 0; }
+  .wz-row { flex-wrap: wrap; }
+  .wz-row-name { flex-basis: calc(100% - 60px); }
+  .wz-row-cells { flex-wrap: wrap; }
+}
+
 /* ------------------------------------------------------------ hoja de confirmación */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;

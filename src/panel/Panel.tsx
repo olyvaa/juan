@@ -12,13 +12,14 @@ import { CATALOG, GOATPRO_RESULTS, VERDICT_LABEL, type StrategyInfo } from './ca
 import { ConfirmSheet, Section, StatusPill, Tile, Toggle, type Confirm } from './ui';
 import { signedUsd, tone, usd } from './format';
 import { getEngine } from '../funding/engine';
-import { Grupos, JfBadge, Mercado, MisCuentas, Tienda } from '../funding/FundingViews';
-import { CandlestickChart, ShoppingBag, Users, WalletCards } from 'lucide-react';
+import { Grupos, JfBadge, Mercado, MisCuentas, Operaciones, Tienda } from '../funding/FundingViews';
+import { CandlestickChart, LayoutGrid, ShoppingBag, Users, WalletCards } from 'lucide-react';
 
-type View = 'jf-tienda' | 'jf-cuentas' | 'jf-grupos' | 'jf-mercado' | 'resumen' | 'estrategias' | 'copiador' | 'cuentas' | 'resultados';
+type View = 'jf-operaciones' | 'jf-tienda' | 'jf-cuentas' | 'jf-grupos' | 'jf-mercado' | 'resumen' | 'estrategias' | 'copiador' | 'cuentas' | 'resultados';
 type Theme = 'auto' | 'light' | 'dark';
 
 const JF_NAV: { id: View; label: string; icon: ReactNode }[] = [
+  { id: 'jf-operaciones', label: 'Operaciones', icon: <LayoutGrid size={18} /> },
   { id: 'jf-tienda', label: 'Tienda', icon: <ShoppingBag size={18} /> },
   { id: 'jf-cuentas', label: 'Mis cuentas', icon: <WalletCards size={18} /> },
   { id: 'jf-grupos', label: 'Grupos', icon: <Users size={18} /> },
@@ -420,7 +421,7 @@ type ViewProps = {
 // ------------------------------------------------------------------ app
 export default function Panel() {
   const { state, connected, checked, run } = useBridge();
-  const [view, setView] = useState<View>(() => readLocal<View>('cc-panel-view', 'jf-tienda'));
+  const [view, setView] = useState<View>(() => readLocal<View>('cc-panel-view', 'jf-operaciones'));
   const [theme, setTheme] = useState<Theme>(() => readLocal<Theme>('cc-panel-theme', 'auto'));
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
@@ -499,6 +500,7 @@ export default function Panel() {
           </div>
         )}
 
+        {view === 'jf-operaciones' && <Operaciones go={setView} />}
         {view === 'jf-tienda' && <Tienda ask={setConfirm} notify={notify} />}
         {view === 'jf-cuentas' && <MisCuentas ask={setConfirm} notify={notify} ntAccounts={connected ? state.accounts : []} ntConnected={connected} />}
         {view === 'jf-grupos' && <Grupos ask={setConfirm} notify={notify} />}
