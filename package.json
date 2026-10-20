@@ -8,7 +8,8 @@
     "panel": "vite --open /panel.html",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "panel:vps": "vite --port 5173 --strictPort"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

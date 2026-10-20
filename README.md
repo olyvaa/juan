@@ -125,3 +125,9 @@ maestra → seguidoras. Es independiente de la web; la web sigue sin conexión c
 - `ninjatrader/`: estrategias y AddOn C# para NinjaTrader 8 (ver su README).
 
 Los archivos de componentes, contexto y datos de la antigua tienda siguen presentes, pero el dashboard actual no los usa.
+
+## Bot 24 h (VPS Windows)
+
+Para que el bot siga funcionando con tu ordenador apagado, consulta [`vps/README.md`](vps/README.md): NinjaTrader y el panel en un
+VPS Windows, con `vps/iniciar-panel.bat` (abre el panel sin que Windows frene el bot en segundo plano) y
+`vps/arrancar-al-iniciar-windows.bat` (lo abre solo al iniciar sesión).
