@@ -676,6 +676,9 @@ function memberState(a: Account, m: Member, today: string, queuePos: number): { 
   return { label: 'ESPERANDO', kind: 'neutral' };
 }
 
+/** Hora del ordenador (España) para mostrar junto a la de Nueva York. */
+const fmtLocal = (t: number) => new Date(t * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
 function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['ask']; notify: Props['notify'] }) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -713,8 +716,8 @@ function GroupMonitor({ g, e, ask, notify }: { g: Group; e: Engine; ask: Props['
           <span className={tone(g.pnl)}>{g.trades} ops · {signedUsd(g.pnl)}</span>
         </div>
         <div className="monitor-check">
-          <span><b>Última vela revisada:</b> {g.lastCheck ? `${fmtNy(g.lastCheck.t).slice(6)} NY · ${g.lastCheck.text}` : g.running ? 'esperando el cierre de la primera vela…' : 'el grupo no está activo'}</span>
-          {g.running && nextClose > 0 && <span className="muted">Próxima vela: {fmtNy(nextClose).slice(6)} NY</span>}
+          <span><b>Última vela revisada:</b> {g.lastCheck ? `${fmtLocal(g.lastCheck.t)} (${fmtNy(g.lastCheck.t).slice(6)} NY) · ${g.lastCheck.text}` : g.running ? 'esperando el cierre de la primera vela…' : 'el grupo no está activo'}</span>
+          {g.running && nextClose > 0 && <span className="muted">Próxima vela: {fmtLocal(nextClose)} ({fmtNy(nextClose).slice(6)} NY)</span>}
         </div>
         <div className="actions tight">
           {g.running
